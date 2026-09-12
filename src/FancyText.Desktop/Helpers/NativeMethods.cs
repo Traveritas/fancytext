@@ -60,4 +60,8 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern IntPtr FindWindow(string? className, string? windowName);
+
+    /// <summary>Win11 圆角等窗口属性（DWMWA_WINDOW_CORNER_PREFERENCE=33）。返回 HRESULT，0=成功。</summary>
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 }

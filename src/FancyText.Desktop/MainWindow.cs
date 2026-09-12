@@ -7,6 +7,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using FancyText.Core;
 using FancyText.Desktop.Helpers;
@@ -37,6 +38,18 @@ internal sealed class MainWindow : Window
     private static readonly Brush HoverChipBrush = Frozen(0xDD, 0xD9, 0xF5);
     private static readonly Brush HoverItemBrush = Frozen(0xF0, 0xEE, 0xFA);
     private static readonly Brush SelectedItemBrush = Frozen(0xE4, 0xE0, 0xF9);
+    private static readonly Brush WindowBorderBrush = Frozen(0xE3, 0xE1, 0xF2);
+    private static readonly Brush SeparatorBrush = Frozen(0xEF, 0xEE, 0xF6);
+    private static readonly Brush ScrollThumbBrush = Frozen(0xCF, 0xCB, 0xE8);
+
+    /// <summary>
+    /// 预览字体回退链：花式样式横跨十余个文字系统，单一字体必然出豆腐块。
+    /// 依次回退到覆盖符号/古文/南亚/藏文/东南亚文字系统的系统字体（未安装的会被跳过）。
+    /// 特意不含 Segoe UI Emoji——Windows 不渲染国旗 emoji，区域指示符 Symbol 即可覆盖，白加载一个大字体。
+    /// </summary>
+    private const string PreviewFontChain =
+        "Microsoft YaHei UI, Segoe UI Symbol, Segoe UI Historic, " +
+        "Nirmala UI, Ebrima, Microsoft Himalaya, Leelawadee UI, Lao UI, Sylfaen";
 
     private static readonly Dictionary<string, TextStyle> StylesById =
         StyleCatalog.All.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
@@ -68,15 +81,13 @@ internal sealed class MainWindow : Window
         Height = 640;
         MinWidth = 380;
         MinHeight = 420;
-        WindowStyle = WindowStyle.None;     // 无边框弹窗
-        ResizeMode = ResizeMode.CanResize;  // 边框不可见，仍可拖边缩放
-        Topmost = true;                     // 唤出即置顶
-        ShowInTaskbar = false;              // 弹窗不占任务栏
+        WindowStyle = WindowStyle.None;       // 无边框弹窗（圆角与阴影由 DWM 提供，见 ApplySystemChrome）
+        ResizeMode = ResizeMode.CanResize;    // WS_THICKFRAME：可拖边缩放，同时带来 DWM 阴影
+        Topmost = true;                       // 唤出即置顶
+        ShowInTaskbar = false;                // 弹窗不占任务栏
         FontFamily = new FontFamily("Microsoft YaHei UI, Segoe UI");
         Foreground = TextBrush;
-        Background = Frozen(0xF6, 0xF6, 0xFA);
-        BorderBrush = Frozen(0xD9, 0xD7, 0xE9);
-        BorderThickness = new Thickness(1);
+        Background = Frozen(0xFB, 0xFB, 0xFE);
 
         BuildUi();
 
@@ -91,6 +102,28 @@ internal sealed class MainWindow : Window
         // 注意：EnsureHandle() 不保证触发 SourceInitialized，热键在这里直接注册。
         new WindowInteropHelper(this).EnsureHandle();
         AttachHotkey();
+        ApplySystemChrome();
+    }
+
+    /// <summary>
+    /// Win11+：用 DWM 系统圆角与阴影替代 AllowsTransparency+DropShadowEffect——
+    /// 位图特效要整面软件渲染缓冲（实测把工作集从 ~70MB 推到 ~190MB，违背轻量化理念），
+    /// DWM 方案零额外缓冲；Win10 上该属性为无操作（方角+阴影，观感可接受）。
+    /// </summary>
+    private void ApplySystemChrome()
+    {
+        try
+        {
+            var handle = new WindowInteropHelper(this).Handle;
+            const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+            var preference = 2; // DWMWCP_ROUND
+            _ = NativeMethods.DwmSetWindowAttribute(
+                handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref preference, sizeof(int));
+        }
+        catch (Exception ex)
+        {
+            LogDiag($"dwm-chrome: 设置圆角失败（不影响使用） {ex.GetType().Name}");
+        }
     }
 
     /// <summary>托盘提示用：当前生效的热键显示文本（如 Ctrl+Alt+F）。</summary>
@@ -100,11 +133,41 @@ internal sealed class MainWindow : Window
 
     private void BuildUi()
     {
-        // 顶部：输入框
+        // 标题栏：应用名 + 提示；空白处按住可拖动窗口
+        var header = new DockPanel
+        {
+            Margin = new Thickness(18, 10, 18, 0),
+            Cursor = Cursors.SizeAll,
+            Background = Brushes.Transparent, // 命中测试需要非 null 背景
+        };
+        var title = new TextBlock
+        {
+            Text = "花式文字",
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = PrimaryBrush,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var headerHint = new TextBlock
+        {
+            Text = "Esc 收起 · 空白处拖动",
+            FontSize = 10.5,
+            Foreground = MetaBrush,
+            VerticalAlignment = VerticalAlignment.Center,
+            Opacity = 0.8,
+        };
+        DockPanel.SetDock(headerHint, Dock.Right);
+        header.Children.Add(headerHint);
+        header.Children.Add(title);
+        header.MouseLeftButtonDown += OnHeaderDrag;
+
+        // 顶部：输入框（圆角模板 + 花式字符回退链——用户可能直接粘贴已装饰文本）
         _inputBox.FontSize = 18;
-        _inputBox.Padding = new Thickness(10, 8, 10, 8);
-        _inputBox.Margin = new Thickness(12, 12, 12, 6);
+        _inputBox.Padding = new Thickness(12, 9, 12, 9);
+        _inputBox.Margin = new Thickness(14, 8, 14, 6);
         _inputBox.VerticalContentAlignment = VerticalAlignment.Center;
+        _inputBox.FontFamily = new FontFamily(PreviewFontChain);
+        _inputBox.Style = CreateRoundedInputStyle();
         _inputBox.TextChanged += (_, _) => { _debounce.Stop(); _debounce.Start(); }; // 每次击键重置 150ms 防抖
 
         // 分类筛选：全部 / 收藏 / 最近 / 六个分类，胶囊形单选组
@@ -128,7 +191,7 @@ internal sealed class MainWindow : Window
             filterPanel.Children.Add(chip);
         }
 
-        // 底部状态栏：左（样式数 + 热键/截断提示），右（快捷键说明）
+        // 底部状态栏：左（样式数 + 热键/截断提示），右（快捷键说明），顶一条细分隔线
         _statusCount.FontSize = 11.5;
         _statusCount.Foreground = MetaBrush;
         _statusCount.TextTrimming = TextTrimming.CharacterEllipsis;
@@ -136,33 +199,136 @@ internal sealed class MainWindow : Window
         {
             FontSize = 11.5,
             Foreground = MetaBrush,
-            Text = "Enter 复制并隐藏 · Esc 隐藏 · Ctrl+D 收藏 · Ctrl+R 换一批随机",
+            Text = "Enter 复制并隐藏 · Ctrl+D 收藏 · Ctrl+R 换一批",
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
-        var status = new DockPanel { Margin = new Thickness(14, 4, 14, 10) };
+        var status = new DockPanel
+        {
+            Margin = new Thickness(16, 8, 16, 12),
+            Background = Brushes.Transparent,
+        };
+        var statusSeparator = new Border
+        {
+            Height = 1,
+            Background = SeparatorBrush,
+            Margin = new Thickness(0, 0, 0, 8),
+        };
+        var statusHost = new DockPanel();
+        DockPanel.SetDock(statusSeparator, Dock.Top);
+        statusHost.Children.Add(statusSeparator);
         DockPanel.SetDock(hints, Dock.Right);
-        status.Children.Add(hints);
-        status.Children.Add(_statusCount); // 最后一个子元素填充余下空间
+        statusHost.Children.Add(hints);
+        statusHost.Children.Add(_statusCount); // 最后一个子元素填充余下空间
+        status.Children.Add(statusHost);
 
         // 主体：样式列表，每项两行（大字预览 + 小字样式名/分类）
         _listBox.BorderThickness = new Thickness(0);
         _listBox.Background = Brushes.Transparent;
-        _listBox.Margin = new Thickness(8, 2, 8, 4);
+        _listBox.Margin = new Thickness(8, 2, 8, 2);
         _listBox.ItemTemplate = CreateItemTemplate();
         _listBox.ItemContainerStyle = CreateItemContainerStyle();
         ScrollViewer.SetHorizontalScrollBarVisibility(_listBox, ScrollBarVisibility.Disabled);
         _listBox.MouseDoubleClick += (_, _) => CommitSelected(); // 双击等价回车
 
-        var root = new DockPanel { Background = Background };
+        // 根容器：DWM 已负责圆角/阴影/描边，这里只承载内容
+        var card = new DockPanel { Background = Background };
+        card.Resources.Add(typeof(ScrollBar), CreateThinScrollBarStyle()); // 细滚动条全局生效
+        DockPanel.SetDock(header, Dock.Top);
         DockPanel.SetDock(_inputBox, Dock.Top);
         DockPanel.SetDock(filterPanel, Dock.Top);
         DockPanel.SetDock(status, Dock.Bottom);
-        root.Children.Add(_inputBox);
-        root.Children.Add(filterPanel);
-        root.Children.Add(status);
-        root.Children.Add(_listBox); // 列表占满余下空间
+        card.Children.Add(header);
+        card.Children.Add(_inputBox);
+        card.Children.Add(filterPanel);
+        card.Children.Add(status);
+        card.Children.Add(_listBox); // 列表占满余下空间
 
-        Content = root;
+        Content = card;
+    }
+
+    private void OnHeaderDrag(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ButtonState == MouseButtonState.Pressed)
+        {
+            try
+            {
+                DragMove(); // 显示状态机未就绪时可能抛异常，防御处理
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
+    }
+
+    /// <summary>圆角输入框模板：聚焦时主色描边。PART_ContentHost 名字必须保留（TextBox 契约）。</summary>
+    private static Style CreateRoundedInputStyle()
+    {
+        var style = new Style(typeof(TextBox));
+        style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0)));
+        style.Setters.Add(new Setter(Control.BackgroundProperty, Frozen(0xF1, 0xF0, 0xF8)));
+        style.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
+        style.Setters.Add(new Setter(System.Windows.Controls.Primitives.TextBoxBase.CaretBrushProperty, PrimaryBrush));
+
+        var border = new FrameworkElementFactory(typeof(Border));
+        border.Name = "InputBorder";
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(9));
+        border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        border.SetValue(Border.BorderBrushProperty, WindowBorderBrush);
+        border.SetValue(Border.BackgroundProperty, Frozen(0xF1, 0xF0, 0xF8));
+        border.SetValue(Border.PaddingProperty, new Thickness(2));
+        var host = new FrameworkElementFactory(typeof(ScrollViewer));
+        host.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Hidden);
+        host.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Auto);
+        var contentHost = new FrameworkElementFactory(typeof(Border));
+        contentHost.Name = "PART_ContentHost";
+        host.AppendChild(contentHost);
+        border.AppendChild(host);
+
+        var template = new ControlTemplate(typeof(TextBox)) { VisualTree = border };
+        var focused = new Trigger { Property = UIElement.IsKeyboardFocusWithinProperty, Value = true };
+        focused.Setters.Add(new Setter(Border.BorderBrushProperty, PrimaryBrush, "InputBorder"));
+        focused.Setters.Add(new Setter(Border.BackgroundProperty, Brushes.White, "InputBorder"));
+        template.Triggers.Add(focused);
+        style.Setters.Add(new Setter(Control.TemplateProperty, template));
+        return style;
+    }
+
+    /// <summary>细滚动条隐式样式：8px 圆角拇指、无箭头（默认 ScrollBar 过粗，与轻量风格不符）。
+    /// 挂到窗口根容器 Resources 后对所有 ListBox/输入框内的滚动条生效。
+    /// Track 的 RepeatButton/Thumb 不是依赖属性、工厂模式设不了，模板用 XamlReader 构建最直接。</summary>
+    private static Style CreateThinScrollBarStyle()
+    {
+        const string xaml = """
+            <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                            xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                            TargetType="ScrollBar">
+              <Grid Background="Transparent">
+                <Track x:Name="PART_Track" IsDirectionReversed="True">
+                  <Track.DecreaseRepeatButton>
+                    <RepeatButton Command="ScrollBar.PageUpCommand" Focusable="False" Background="Transparent" BorderThickness="0" />
+                  </Track.DecreaseRepeatButton>
+                  <Track.IncreaseRepeatButton>
+                    <RepeatButton Command="ScrollBar.PageDownCommand" Focusable="False" Background="Transparent" BorderThickness="0" />
+                  </Track.IncreaseRepeatButton>
+                  <Track.Thumb>
+                    <Thumb Focusable="False">
+                      <Thumb.Template>
+                        <ControlTemplate TargetType="Thumb">
+                          <Border Background="#CFCBE8" CornerRadius="4" Margin="1,2,1,2" />
+                        </ControlTemplate>
+                      </Thumb.Template>
+                    </Thumb>
+                  </Track.Thumb>
+                </Track>
+              </Grid>
+            </ControlTemplate>
+            """;
+        var template = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(xaml);
+        var style = new Style(typeof(ScrollBar));
+        style.Setters.Add(new Setter(FrameworkElement.WidthProperty, 8d));
+        style.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
+        style.Setters.Add(new Setter(Control.TemplateProperty, template));
+        return style;
     }
 
     /// <summary>筛选项：全部 / 收藏 / 最近 / 一个具体分类。</summary>
@@ -231,6 +397,7 @@ internal sealed class MainWindow : Window
         preview.SetBinding(TextBlock.TextProperty, new Binding(nameof(StyleListItem.PreviewText)));
         preview.SetValue(TextBlock.FontSizeProperty, 16d);
         preview.SetValue(TextBlock.FontWeightProperty, FontWeights.Medium);
+        preview.SetValue(TextBlock.FontFamilyProperty, new FontFamily(PreviewFontChain)); // 花式字符回退链，防豆腐块
         preview.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
         preview.SetValue(TextBlock.MarginProperty, new Thickness(0, 0, 0, 3));
 
@@ -255,11 +422,30 @@ internal sealed class MainWindow : Window
 
         var border = new FrameworkElementFactory(typeof(Border));
         border.Name = "ItemBorder";
-        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(7));
         border.SetValue(Border.BackgroundProperty, Brushes.Transparent);
-        border.SetValue(Border.PaddingProperty, new Thickness(10, 7, 10, 7));
+        border.SetValue(Border.PaddingProperty, new Thickness(12, 8, 12, 8));
+
+        // 选中时左侧出现主色竖条（视觉锚点，比整块高亮更克制）
+        var accent = new FrameworkElementFactory(typeof(Border));
+        accent.Name = "AccentBar";
+        accent.SetValue(Border.WidthProperty, 3d);
+        accent.SetValue(Border.CornerRadiusProperty, new CornerRadius(2));
+        accent.SetValue(Border.BackgroundProperty, PrimaryBrush);
+        accent.SetValue(Border.MarginProperty, new Thickness(0, 6, 0, 6));
+        accent.SetValue(Border.VerticalAlignmentProperty, VerticalAlignment.Stretch);
+        accent.SetValue(Border.HorizontalAlignmentProperty, HorizontalAlignment.Left);
+        accent.SetValue(UIElement.OpacityProperty, 0d); // 默认隐藏，选中触发器点亮
+        var accentHost = new FrameworkElementFactory(typeof(Border)); // 叠放层：预览内容之上不占布局
+        accentHost.SetValue(Border.CornerRadiusProperty, new CornerRadius(7));
+        accentHost.AppendChild(accent);
+
         var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
-        border.AppendChild(presenter);
+        presenter.SetValue(FrameworkElement.MarginProperty, new Thickness(5, 0, 0, 0));
+        var grid = new FrameworkElementFactory(typeof(Grid));
+        grid.AppendChild(presenter);
+        grid.AppendChild(accentHost);
+        border.AppendChild(grid);
 
         // TargetName 的 Setter 只能放在模板触发器里（Style.Triggers 会抛 InvalidOperationException，
         // 且异常发生在容器生成时——正好把整次 Show() 带崩，窗口完全弹不出来）
@@ -271,6 +457,7 @@ internal sealed class MainWindow : Window
 
         var selected = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true };
         selected.Setters.Add(new Setter(Border.BackgroundProperty, SelectedItemBrush, "ItemBorder"));
+        selected.Setters.Add(new Setter(UIElement.OpacityProperty, 1d, "AccentBar"));
         template.Triggers.Add(selected);
 
         style.Setters.Add(new Setter(Control.TemplateProperty, template));
