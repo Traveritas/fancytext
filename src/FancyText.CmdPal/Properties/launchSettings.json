@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "FancyText.CmdPal (Package)": {
+      "commandName": "MsixPackage",
+      "alwaysReinstallApp": false,
+      "remoteDebugEnabled": false,
+      "allowLocalNetworkLoopback": false,
+      "authenticationMode": "Windows",
+      "doNotLaunchApp": false
+    }
+  }
+}
