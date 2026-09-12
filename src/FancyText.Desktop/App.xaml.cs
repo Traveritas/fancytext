@@ -20,6 +20,7 @@ public partial class App : Application, IDisposable
     private RegisteredWaitHandle? _activateRegistration;
     private MainWindow? _mainWindow;
     private TrayIconController? _tray;
+    private bool _ownsMutex;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -38,6 +39,7 @@ public partial class App : Application, IDisposable
         WinForms.Application.EnableVisualStyles();
 
         _singleInstanceMutex = new Mutex(initiallyOwned: true, MutexName, out var createdNew);
+        _ownsMutex = createdNew; // 二次实例从未拥有互斥体，退出时不可 Release
         if (!createdNew)
         {
             // 二次启动：唤醒已有实例弹出窗口，自己立即退出
@@ -113,7 +115,18 @@ public partial class App : Application, IDisposable
         }
 
         _mainWindow = null;
-        _singleInstanceMutex?.ReleaseMutex();
+        if (_ownsMutex)
+        {
+            try
+            {
+                _singleInstanceMutex?.ReleaseMutex();
+            }
+            catch (ApplicationException)
+            {
+                // 极端时序下已被释放，忽略
+            }
+        }
+
         _singleInstanceMutex?.Dispose();
         _singleInstanceMutex = null;
 

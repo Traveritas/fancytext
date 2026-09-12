@@ -260,16 +260,20 @@ internal sealed class MainWindow : Window
         border.SetValue(Border.PaddingProperty, new Thickness(10, 7, 10, 7));
         var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
         border.AppendChild(presenter);
-        style.Setters.Add(new Setter(Control.TemplateProperty,
-            new ControlTemplate(typeof(ListBoxItem)) { VisualTree = border }));
+
+        // TargetName 的 Setter 只能放在模板触发器里（Style.Triggers 会抛 InvalidOperationException，
+        // 且异常发生在容器生成时——正好把整次 Show() 带崩，窗口完全弹不出来）
+        var template = new ControlTemplate(typeof(ListBoxItem)) { VisualTree = border };
 
         var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
         hover.Setters.Add(new Setter(Border.BackgroundProperty, HoverItemBrush, "ItemBorder"));
-        style.Triggers.Add(hover);
+        template.Triggers.Add(hover);
 
         var selected = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true };
         selected.Setters.Add(new Setter(Border.BackgroundProperty, SelectedItemBrush, "ItemBorder"));
-        style.Triggers.Add(selected);
+        template.Triggers.Add(selected);
+
+        style.Setters.Add(new Setter(Control.TemplateProperty, template));
 
         return style;
     }
@@ -286,7 +290,8 @@ internal sealed class MainWindow : Window
 
         if (IsVisible)
         {
-            Activate(); // 已打开时只提前
+            SafeActivate(); // 已打开时只提前
+            FocusInput();
             return;
         }
 
@@ -296,9 +301,36 @@ internal sealed class MainWindow : Window
         PositionNearCursor();
         _activatedSinceShown = false;
         Show();
-        Activate();
-        _inputBox.Focus();
-        _inputBox.SelectAll(); // 打开即可整段替换输入
+
+        // 经 EnsureHandle() 预创建句柄的窗口，WPF 的显示状态机在首次/重复唤出时
+        // 可能让 Activate() 抛"显示 Window 之前无法调用"——防御处理，不让它吞掉整次唤出
+        SafeActivate();
+        FocusInput();
+    }
+
+    private void SafeActivate()
+    {
+        try
+        {
+            Activate();
+        }
+        catch (InvalidOperationException)
+        {
+            // Show() 已生效，仅激活失败，无碍
+        }
+    }
+
+    private void FocusInput()
+    {
+        try
+        {
+            _inputBox.Focus();
+            _inputBox.SelectAll(); // 打开即可整段替换输入
+        }
+        catch (Exception)
+        {
+            // 聚焦失败不影响窗口显示与键盘导航
+        }
     }
 
     /// <summary>预填剪贴板文本并全选；剪贴板为空/被占用/非文本则用内置示例。</summary>
