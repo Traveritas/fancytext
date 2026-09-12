@@ -1115,16 +1115,20 @@ internal sealed class MainWindow : Window
     };
 
     /// <summary>
-    /// 预览专用 TextBlock：把拉丁区组合符（U+0300–036F、U+0483–0489）拆进独立 Run 并显式指定 Arial。
-    /// WPF 会把"基字+组合符"整簇锁死在基字的字体上，组合符永远不参与回退（FontProbe 实测：
-    /// 字体链/Arial 优先/GlobalUserInterface/自定义 CompositeFont 全部豆腐块，唯一可行是手动按字符拆 Run）。
-    /// 这些码点 YaHei/Segoe UI/Symbol 都没有，而 Arial 全覆盖（font-coverage.ps1 枚举 416 个字体验证）。
-    /// 藏文/泰文等组合符不动——它们与基字同文字系统，整簇落在链中相应字体内，本就正常。
+    /// 预览专用 TextBlock：把"Inherited"类组合符拆进独立 Run 并按码点指定字体。
+    /// WPF 文本引擎按 Unicode script 切分 run：自带文字系统的符号（藏 0F7C/泰 0E49/南亚 0B8A 等）
+    /// 会被切成独立 run 走链内字体正常回退；而 Inherited 类组合符（拉丁 0300–036F、西里尔 0483–0489、
+    /// 组合记号 20D0–20FF、西里尔大数 A670 段）继承基字的 script，整簇锁死在基字字体（CJK=雅黑），
+    /// 永不回退 → 豆腐块。FontProbe 实测字体链/CompositeFont 均无解，唯一可行是手动拆 Run。
+    /// 各码点的字体归宿由 font-coverage.ps1 枚举系统字体实测得出（详见各分支注释）。
     /// </summary>
     private sealed class PreviewTextBlock : TextBlock
     {
-        private static readonly FontFamily MarkFont = new("Arial");
         private static readonly FontFamily BaseFont = new(PreviewFontChain);
+        private static readonly FontFamily LatinMarkFont = new("Arial");            // 0300–036F、0483–0489 全覆盖
+        private static readonly FontFamily SymbolMarkFont = new("Segoe UI Symbol"); // 20D0–20FF 除 20DD 外全覆盖
+        private static readonly FontFamily CambriaMarkFont = new("Cambria");        // 20DD 包围圆：Symbol 无、Cambria 有
+        private static readonly FontFamily SegoeUiFont = new("Segoe UI");           // A670/A672 西里尔大数组合符
         private bool _building;
 
         public PreviewTextBlock()
@@ -1141,6 +1145,17 @@ internal sealed class MainWindow : Window
                 BuildRuns();
         }
 
+        /// <summary>Inherited 类组合符 → 归宿字体；null = 非此类（连同基字留在回退链里）。</summary>
+        private static FontFamily? MarkFontFor(char ch) => ch switch
+        {
+            >= '\u0300' and <= '\u036F' => LatinMarkFont,
+            >= '\u0483' and <= '\u0489' => LatinMarkFont,
+            '\u20DD' => CambriaMarkFont,
+            >= '\u20D0' and <= '\u20FF' => SymbolMarkFont, // 顶箭头/包围框/菱形/禁止/三角/雪花等
+            >= '\uA670' and <= '\uA672' => SegoeUiFont,
+            _ => null,
+        };
+
         private void BuildRuns()
         {
             _building = true;
@@ -1148,20 +1163,20 @@ internal sealed class MainWindow : Window
             {
                 Inlines.Clear();
                 var buffer = new System.Text.StringBuilder();
-                bool current = false; // 当前缓冲段是否为组合符段
+                FontFamily? current = null; // 当前缓冲段的标记字体（null = 基链段）
                 void Flush()
                 {
                     if (buffer.Length == 0) return;
                     Inlines.Add(new System.Windows.Documents.Run(buffer.ToString())
                     {
-                        FontFamily = current ? MarkFont : BaseFont,
+                        FontFamily = current ?? BaseFont,
                     });
                     buffer.Clear();
                 }
                 foreach (var ch in Text)
                 {
-                    bool mark = (ch >= '\u0300' && ch <= '\u036F') || (ch >= '\u0483' && ch <= '\u0489');
-                    if (mark != current)
+                    var mark = MarkFontFor(ch);
+                    if (!ReferenceEquals(mark, current))
                     {
                         Flush();
                         current = mark;
