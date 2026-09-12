@@ -359,7 +359,7 @@ internal sealed class MainWindow : Window
         {
             var cursor = WinForms.Cursor.Position; // 物理像素
             var area = WinForms.Screen.FromPoint(cursor).WorkingArea;
-            double scale = GetDpiScale();
+            double scale = GetDpiScale(cursor);
             double width = (ActualWidth > 0 ? ActualWidth : Width) * scale;
             double height = (ActualHeight > 0 ? ActualHeight : Height) * scale;
             const int margin = 12;
@@ -382,6 +382,7 @@ internal sealed class MainWindow : Window
             WindowStartupLocation = WindowStartupLocation.Manual;
             Left = x / scale;
             Top = y / scale;
+            LogDiag($"position: cursor=({cursor.X},{cursor.Y}) scale={scale:F2} area=({area.Left},{area.Top})-({area.Right},{area.Bottom}) sizePhys=({width:F0}x{height:F0}) leftTop=({Left:F0},{Top:F0})");
         }
         catch (Exception)
         {
@@ -392,16 +393,35 @@ internal sealed class MainWindow : Window
         }
     }
 
-    /// <summary>物理像素 → WPF 设备无关单位的缩放比。优先取本窗口实际变换（多屏最准）。</summary>
-    private double GetDpiScale()
+    /// <summary>
+    /// 鼠标所在显示器的 DPI 缩放比（物理像素 / DIU）。逐级回退：光标显示器 → 本窗口变换 → 系统 DPI。
+    /// 注意方向：需要的是"DIU→物理"的倍率（TransformToDevice），此前误用 TransformFromDevice
+    /// 导致坐标被反向放大——缩放越大、离左上角越远，窗口偏得越厉害。
+    /// </summary>
+    private double GetDpiScale(System.Drawing.Point cursor)
     {
-        var matrix = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformFromDevice;
-        if (matrix is { } m)
+        try
         {
-            return m.M11;
+            var monitor = NativeMethods.MonitorFromPoint(
+                new NativeMethods.POINT { X = cursor.X, Y = cursor.Y }, 2 /* MONITOR_DEFAULTTONEAREST */);
+            if (monitor != IntPtr.Zero &&
+                NativeMethods.GetDpiForMonitor(monitor, 0 /* EFFECTIVE */, out var dpiX, out _) == 0 && dpiX > 0)
+            {
+                return dpiX / 96.0;
+            }
+        }
+        catch (Exception)
+        {
+            // shcore 不可用（旧系统）时走回退
         }
 
-        // 首次显示前的兜底：GDI 系统 DPI
+        var toDevice = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice;
+        if (toDevice is { } matrix)
+        {
+            return matrix.M11;
+        }
+
+        // 显示前的最后兜底：GDI 系统 DPI
         using var g = System.Drawing.Graphics.FromHwnd(IntPtr.Zero);
         return g.DpiX / 96.0;
     }
