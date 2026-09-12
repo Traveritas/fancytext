@@ -31,17 +31,11 @@ internal sealed class MainWindow : Window
     private const int MaxPreviewChars = 160;
     private const int DebounceMs = 150;
 
-    // —— 配色：主色 #6352DC，浅色主题 ——
-    private static readonly Brush PrimaryBrush = Frozen(0x63, 0x52, 0xDC);
-    private static readonly Brush TextBrush = Frozen(0x25, 0x24, 0x33);
-    private static readonly Brush MetaBrush = Frozen(0x77, 0x75, 0x8A);
-    private static readonly Brush ChipBackgroundBrush = Frozen(0xE9, 0xE8, 0xF0);
-    private static readonly Brush HoverChipBrush = Frozen(0xDD, 0xD9, 0xF5);
-    private static readonly Brush HoverItemBrush = Frozen(0xF0, 0xEE, 0xFA);
-    private static readonly Brush SelectedItemBrush = Frozen(0xE4, 0xE0, 0xF9);
-    private static readonly Brush WindowBorderBrush = Frozen(0xE3, 0xE1, 0xF2);
-    private static readonly Brush SeparatorBrush = Frozen(0xEF, 0xEE, 0xF6);
-    private static readonly Brush ScrollThumbBrush = Frozen(0xCF, 0xCB, 0xE8);
+    /// <summary>当前主题（强调色+明暗）：实例级，设置页改动后整体重建。</summary>
+    private Theme _theme;
+
+    /// <summary>当前设置：record 不可变，改动来自设置页（整体替换 + Save + RebuildUi）。</summary>
+    private DesktopSettings _settings;
 
     /// <summary>
     /// 预览字体回退链：花式样式横跨十余个文字系统，单一字体必然出豆腐块。
@@ -56,13 +50,14 @@ internal sealed class MainWindow : Window
         StyleCatalog.All.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
 
     private readonly UsageState _usage;
-    private readonly HotkeyBinding _hotkey;
     private readonly DispatcherTimer _debounce;
+    private HotkeyBinding _hotkey;
 
-    private readonly TextBox _inputBox = new();
+    // 可被 BuildUi 整体重建（主题切换时全量换新实例，避免逐控件回填笔刷）
+    private TextBox _inputBox = new();
     private Border _inputBoxBorder = new();
-    private readonly ListBox _listBox = new();
-    private readonly TextBlock _statusCount = new();
+    private ListBox _listBox = new();
+    private TextBlock _statusCount = new();
     private List<StyleListItem> _currentItems = [];
     private FilterOption _filter = FilterOption.All;
     private HwndSource? _hwndSource;
@@ -73,7 +68,9 @@ internal sealed class MainWindow : Window
     public MainWindow(UsageState usage)
     {
         _usage = usage;
-        _hotkey = DesktopConfig.LoadHotkey();
+        _settings = DesktopSettings.Load();
+        _hotkey = DesktopSettings.ParseHotkey(_settings.Hotkey) ?? HotkeyBinding.Default;
+        _theme = ResolveTheme(_settings);
 
         _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(DebounceMs) };
         _debounce.Tick += (_, _) => { _debounce.Stop(); RebuildList(); };
@@ -88,8 +85,7 @@ internal sealed class MainWindow : Window
         Topmost = true;                       // 唤出即置顶
         ShowInTaskbar = false;                // 弹窗不占任务栏
         FontFamily = new FontFamily("Microsoft YaHei UI, Segoe UI");
-        Foreground = TextBrush;
-        Background = Frozen(0xFB, 0xFB, 0xFE);
+        ApplyThemeToWindow();
 
         BuildUi();
 
@@ -105,6 +101,43 @@ internal sealed class MainWindow : Window
         new WindowInteropHelper(this).EnsureHandle();
         AttachHotkey();
         ApplySystemChrome();
+    }
+
+    /// <summary>设置项 → 主题：system 模式读注册表 AppsUseLightTheme（读不到按浅色）。</summary>
+    private static Theme ResolveTheme(DesktopSettings settings)
+    {
+        var dark = settings.Theme switch
+        {
+            "dark" => true,
+            "system" => IsSystemDark(),
+            _ => false,
+        };
+        if (!DesktopSettings.TryParseColor(settings.Accent, out var r, out var g, out var b))
+        {
+            (r, g, b) = (0x63, 0x52, 0xDC);
+        }
+
+        return new Theme(Color.FromRgb(r, g, b), dark);
+    }
+
+    private static bool IsSystemDark()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return key?.GetValue("AppsUseLightTheme") is int value && value == 0;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private void ApplyThemeToWindow()
+    {
+        Foreground = _theme.Text;
+        Background = _theme.WindowBackground;
     }
 
     /// <summary>
@@ -138,8 +171,18 @@ internal sealed class MainWindow : Window
     /// <summary>托盘提示用：当前生效的热键显示文本（如 Ctrl+Alt+F）。</summary>
     internal string HotkeyDisplay => _hotkey.Display;
 
-    // ================================================== 布局（纯代码） ==================================================
+    /// <summary>设置窗用：当前设置（record 只读快照）。</summary>
+    internal DesktopSettings CurrentSettings => _settings;
 
+    /// <summary>设置窗用：当前主题（自身配色的基准）。</summary>
+    internal Theme CurrentTheme => _theme;
+
+    // ================================================== 布局（纯代码，可整体重建） ==================================================
+
+    /// <summary>
+    /// 构建全部界面控件。每次都创建新实例并整体替换（主题/设置切换时直接重跑本方法），
+    /// 事件全部挂在新控件上，不存在重复挂接；列表内容由调用方随后 RebuildList 填充。
+    /// </summary>
     private void BuildUi()
     {
         // 标题栏：无文字，纯隐形拖动条（按住空白处拖动窗口）
@@ -154,37 +197,40 @@ internal sealed class MainWindow : Window
 
         // 顶部：输入框。做法：默认 TextBox（IME/编辑器链路保持原生完整——自定义模板曾导致无法输入）
         // 外包一层圆角 Border 拿回观感；聚焦变色走事件，不碰模板。
-        _inputBox.FontSize = 18;
-        _inputBox.Padding = new Thickness(11, 9, 11, 9);
-        _inputBox.VerticalContentAlignment = VerticalAlignment.Center;
-        // 注意：输入框不设字体回退链——WPF 会把字体名传给 IME（组合窗口字体），
-        // 链式多字体名超过 LOGFONT 32 字符上限是非法名，会导致 IME 组合失败、无法打字（能删不能输）。
-        // 预览列表的 TextBlock 不参与 IME，保留完整回退链防豆腐块。
-        // _inputBox.FontFamily = new FontFamily(PreviewFontChain);
-        _inputBox.BorderThickness = new Thickness(0);
-        _inputBox.Background = Brushes.Transparent;
-        _inputBox.CaretBrush = PrimaryBrush;
+        _inputBox = new TextBox
+        {
+            FontSize = 18,
+            Padding = new Thickness(11, 9, 11, 9),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            // 注意：输入框不设字体回退链——WPF 会把字体名传给 IME（组合窗口字体），
+            // 链式多字体名超过 LOGFONT 32 字符上限是非法名，会导致 IME 组合失败、无法打字（能删不能输）。
+            // 预览列表的 TextBlock 不参与 IME，保留完整回退链防豆腐块。
+            BorderThickness = new Thickness(0),
+            Background = Brushes.Transparent,
+            Foreground = _theme.Text,
+            CaretBrush = _theme.Primary,
+        };
         _inputBox.TextChanged += (_, _) => { _debounce.Stop(); _debounce.Start(); }; // 每次击键重置 150ms 防抖
 
         _inputBoxBorder = new Border
         {
             CornerRadius = new CornerRadius(9),
             BorderThickness = new Thickness(1),
-            BorderBrush = WindowBorderBrush,
-            Background = Frozen(0xF1, 0xF0, 0xF8),
+            BorderBrush = _theme.WindowBorder,
+            Background = _theme.InputIdleBackground,
             Padding = new Thickness(2),
             Margin = new Thickness(14, 8, 14, 6),
             Child = _inputBox,
         };
         _inputBox.GotKeyboardFocus += (_, _) =>
         {
-            _inputBoxBorder.BorderBrush = PrimaryBrush;
-            _inputBoxBorder.Background = Brushes.White;
+            _inputBoxBorder.BorderBrush = _theme.Primary;
+            _inputBoxBorder.Background = _theme.InputFocusBackground;
         };
         _inputBox.LostKeyboardFocus += (_, _) =>
         {
-            _inputBoxBorder.BorderBrush = WindowBorderBrush;
-            _inputBoxBorder.Background = Frozen(0xF1, 0xF0, 0xF8);
+            _inputBoxBorder.BorderBrush = _theme.WindowBorder;
+            _inputBoxBorder.Background = _theme.InputIdleBackground;
         };
 
         // 分类筛选：全部 / 收藏 / 最近 / 六个分类，胶囊形单选组
@@ -199,9 +245,9 @@ internal sealed class MainWindow : Window
                 Tag = options[i],
                 Style = CreateChipStyle(),
             };
-            if (i == 0)
+            if (options[i].Equals(_filter))
             {
-                chip.IsChecked = true; // 初始"全部"（先设再挂事件，避免构造期触发重建）
+                chip.IsChecked = true; // 保留当前筛选（先设再挂事件，避免构造期触发重建）
             }
 
             chip.Checked += OnFilterChecked;
@@ -209,10 +255,13 @@ internal sealed class MainWindow : Window
         }
 
         // 底部状态栏：左侧样式数，右侧键帽式快捷键提示（细线分隔，观感对齐现代小工具）
-        _statusCount.FontSize = 11.5;
-        _statusCount.Foreground = MetaBrush;
-        _statusCount.TextTrimming = TextTrimming.CharacterEllipsis;
-        _statusCount.VerticalAlignment = VerticalAlignment.Center;
+        _statusCount = new TextBlock
+        {
+            FontSize = 11.5,
+            Foreground = _theme.Meta,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         var hints = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         foreach (var (key, action) in new[] { ("Enter", "复制"), ("Ctrl+D", "收藏"), ("Ctrl+R", "随机"), ("Esc", "收起") })
         {
@@ -226,7 +275,7 @@ internal sealed class MainWindow : Window
             {
                 Text = action,
                 FontSize = 10.5,
-                Foreground = MetaBrush,
+                Foreground = _theme.Meta,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(4, 0, 0, 0),
             };
@@ -241,7 +290,7 @@ internal sealed class MainWindow : Window
         var statusSeparator = new Border
         {
             Height = 1,
-            Background = SeparatorBrush,
+            Background = _theme.Separator,
             Margin = new Thickness(0, 0, 0, 8),
         };
         var statusHost = new DockPanel();
@@ -253,11 +302,15 @@ internal sealed class MainWindow : Window
         status.Children.Add(statusHost);
 
         // 主体：样式列表，每项两行（大字预览 + 小字样式名/分类）
-        _listBox.BorderThickness = new Thickness(0);
-        _listBox.Background = Brushes.Transparent;
-        _listBox.Margin = new Thickness(8, 2, 8, 2);
-        _listBox.ItemTemplate = CreateItemTemplate();
-        _listBox.ItemContainerStyle = CreateItemContainerStyle();
+        _listBox = new ListBox
+        {
+            BorderThickness = new Thickness(0),
+            Background = Brushes.Transparent,
+            Margin = new Thickness(8, 2, 8, 2),
+            ItemTemplate = CreateItemTemplate(),
+            ItemContainerStyle = CreateItemContainerStyle(),
+            Foreground = _theme.Text,
+        };
         ScrollViewer.SetHorizontalScrollBarVisibility(_listBox, ScrollBarVisibility.Disabled);
         _listBox.MouseDoubleClick += (_, _) => CommitSelected(); // 双击等价回车
 
@@ -277,6 +330,24 @@ internal sealed class MainWindow : Window
         Content = card;
     }
 
+    /// <summary>
+    /// 设置页回调：整体应用新设置（主题/预览字号等）。重建 UI 前保留输入与筛选，
+    /// 重建后恢复输入并刷新列表——对用户而言即"即时生效"。
+    /// </summary>
+    internal void ApplySettings(DesktopSettings settings)
+    {
+        _settings = settings;
+        _theme = ResolveTheme(settings);
+        ApplyThemeToWindow();
+        var input = _inputBox.Text;
+        BuildUi();
+        _inputBox.Text = input; // 触发防抖重建列表
+        if (string.IsNullOrEmpty(input))
+        {
+            RebuildList();
+        }
+    }
+
     private void OnHeaderDrag(object sender, MouseButtonEventArgs e)
     {
         if (e.ButtonState == MouseButtonState.Pressed)
@@ -294,9 +365,9 @@ internal sealed class MainWindow : Window
     /// <summary>细滚动条隐式样式：8px 圆角拇指、无箭头（默认 ScrollBar 过粗，与轻量风格不符）。
     /// 挂到窗口根容器 Resources 后对所有 ListBox/输入框内的滚动条生效。
     /// Track 的 RepeatButton/Thumb 不是依赖属性、工厂模式设不了，模板用 XamlReader 构建最直接。</summary>
-    private static Style CreateThinScrollBarStyle()
+    private Style CreateThinScrollBarStyle()
     {
-        const string xaml = """
+        var xaml = $$"""
             <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                             TargetType="ScrollBar">
@@ -312,7 +383,7 @@ internal sealed class MainWindow : Window
                     <Thumb Focusable="False">
                       <Thumb.Template>
                         <ControlTemplate TargetType="Thumb">
-                          <Border Background="#CFCBE8" CornerRadius="4" Margin="1,2,1,2" />
+                          <Border Background="{{_theme.ScrollThumbHex}}" CornerRadius="4" Margin="1,2,1,2" />
                         </ControlTemplate>
                       </Thumb.Template>
                     </Thumb>
@@ -345,18 +416,18 @@ internal sealed class MainWindow : Window
     }
 
     /// <summary>胶囊形单选按钮模板：选中=主色底白字，悬停=浅紫。触发器后声明者优先，故悬停在前、选中在后。</summary>
-    private static Style CreateChipStyle()
+    private Style CreateChipStyle()
     {
         var style = new Style(typeof(RadioButton));
         style.Setters.Add(new Setter(FrameworkElement.CursorProperty, Cursors.Hand));
         style.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(0, 0, 6, 4)));
         style.Setters.Add(new Setter(Control.FontSizeProperty, 12.5));
-        style.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
+        style.Setters.Add(new Setter(Control.ForegroundProperty, _theme.Text));
 
         var border = new FrameworkElementFactory(typeof(Border));
         border.Name = "ChipBorder";
         border.SetValue(Border.CornerRadiusProperty, new CornerRadius(11));
-        border.SetValue(Border.BackgroundProperty, ChipBackgroundBrush);
+        border.SetValue(Border.BackgroundProperty, _theme.ChipBackground);
         border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
         border.SetValue(Border.BorderBrushProperty, Brushes.Transparent);
         border.SetValue(Border.PaddingProperty, new Thickness(10, 4, 10, 4));
@@ -369,12 +440,12 @@ internal sealed class MainWindow : Window
         var template = new ControlTemplate(typeof(RadioButton)) { VisualTree = border };
 
         var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-        hover.Setters.Add(new Setter(Border.BackgroundProperty, HoverChipBrush, "ChipBorder"));
+        hover.Setters.Add(new Setter(Border.BackgroundProperty, _theme.HoverChip, "ChipBorder"));
         template.Triggers.Add(hover);
 
         var checkedTrigger = new Trigger { Property = ToggleButton.IsCheckedProperty, Value = true };
-        checkedTrigger.Setters.Add(new Setter(Border.BackgroundProperty, PrimaryBrush, "ChipBorder"));
-        checkedTrigger.Setters.Add(new Setter(Border.BorderBrushProperty, PrimaryBrush, "ChipBorder"));
+        checkedTrigger.Setters.Add(new Setter(Border.BackgroundProperty, _theme.Primary, "ChipBorder"));
+        checkedTrigger.Setters.Add(new Setter(Border.BorderBrushProperty, _theme.Primary, "ChipBorder"));
         template.Triggers.Add(checkedTrigger);
 
         style.Setters.Add(new Setter(Control.TemplateProperty, template));
@@ -387,13 +458,13 @@ internal sealed class MainWindow : Window
     }
 
     /// <summary>列表项两行数据模板：第一行转换预览（大字号），第二行样式名（⭐ 收藏前缀）+ 分类。</summary>
-    private static DataTemplate CreateItemTemplate()
+    private DataTemplate CreateItemTemplate()
     {
         var panel = new FrameworkElementFactory(typeof(StackPanel));
 
         var preview = new FrameworkElementFactory(typeof(PreviewTextBlock));
         preview.SetBinding(PreviewTextBlock.TextProperty, new Binding(nameof(StyleListItem.PreviewText)));
-        preview.SetValue(TextBlock.FontSizeProperty, 16d);
+        preview.SetValue(TextBlock.FontSizeProperty, _settings.PreviewFontSize);
         preview.SetValue(TextBlock.FontWeightProperty, FontWeights.Medium);
         preview.SetValue(TextBlock.FontFamilyProperty, new FontFamily(PreviewFontChain)); // 花式字符回退链，防豆腐块
         preview.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
@@ -402,7 +473,7 @@ internal sealed class MainWindow : Window
         var meta = new FrameworkElementFactory(typeof(TextBlock));
         meta.SetBinding(TextBlock.TextProperty, new Binding(nameof(StyleListItem.Meta)));
         meta.SetValue(TextBlock.FontSizeProperty, 11.5d);
-        meta.SetValue(TextBlock.ForegroundProperty, MetaBrush);
+        meta.SetValue(TextBlock.ForegroundProperty, _theme.Meta);
         meta.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
 
         panel.AppendChild(preview);
@@ -411,12 +482,12 @@ internal sealed class MainWindow : Window
     }
 
     /// <summary>列表项容器：圆角卡片，悬停浅紫、选中淡紫底（淡底保证灰色小字仍可读）。</summary>
-    private static Style CreateItemContainerStyle()
+    private Style CreateItemContainerStyle()
     {
         var style = new Style(typeof(ListBoxItem));
         style.Setters.Add(new Setter(Control.MarginProperty, new Thickness(0, 0, 0, 4)));
         style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch)); // 拉满才有 TextTrimming
-        style.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
+        style.Setters.Add(new Setter(Control.ForegroundProperty, _theme.Text));
 
         var border = new FrameworkElementFactory(typeof(Border));
         border.Name = "ItemBorder";
@@ -429,7 +500,7 @@ internal sealed class MainWindow : Window
         accent.Name = "AccentBar";
         accent.SetValue(Border.WidthProperty, 3d);
         accent.SetValue(Border.CornerRadiusProperty, new CornerRadius(2));
-        accent.SetValue(Border.BackgroundProperty, PrimaryBrush);
+        accent.SetValue(Border.BackgroundProperty, _theme.Primary);
         accent.SetValue(Border.MarginProperty, new Thickness(0, 6, 0, 6));
         accent.SetValue(Border.VerticalAlignmentProperty, VerticalAlignment.Stretch);
         accent.SetValue(Border.HorizontalAlignmentProperty, HorizontalAlignment.Left);
@@ -450,11 +521,11 @@ internal sealed class MainWindow : Window
         var template = new ControlTemplate(typeof(ListBoxItem)) { VisualTree = border };
 
         var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-        hover.Setters.Add(new Setter(Border.BackgroundProperty, HoverItemBrush, "ItemBorder"));
+        hover.Setters.Add(new Setter(Border.BackgroundProperty, _theme.HoverItem, "ItemBorder"));
         template.Triggers.Add(hover);
 
         var selected = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true };
-        selected.Setters.Add(new Setter(Border.BackgroundProperty, SelectedItemBrush, "ItemBorder"));
+        selected.Setters.Add(new Setter(Border.BackgroundProperty, _theme.SelectedItem, "ItemBorder"));
         selected.Setters.Add(new Setter(UIElement.OpacityProperty, 1d, "AccentBar"));
         template.Triggers.Add(selected);
 
@@ -465,7 +536,7 @@ internal sealed class MainWindow : Window
 
     // ================================================== 唤出 / 隐藏 ==================================================
 
-    /// <summary>唤出弹窗：预填剪贴板 → 重建列表 → 定位到鼠标附近。热键/托盘/二次启动共用入口。</summary>
+    /// <summary>唤出弹窗：按设置预填 → 重建列表 → 定位（鼠标附近/主屏）。热键/托盘/二次启动共用入口。</summary>
     public void ShowPopup()
     {
         if (_closed)
@@ -480,10 +551,26 @@ internal sealed class MainWindow : Window
             return;
         }
 
-        SeedInputFromClipboard();
+        if (_settings.PrefillClipboard)
+        {
+            SeedInputFromClipboard();
+        }
+        else if (string.IsNullOrEmpty(_inputBox.Text))
+        {
+            _inputBox.Text = StyleCatalog.DefaultSample; // 保留上次输入；首次打开给示例
+        }
+
         _debounce.Stop(); // 种入文本已触发过 TextChanged，直接同步重建
         RebuildList();
-        PositionNearCursor();
+        if (_settings.PopupPosition == "primary")
+        {
+            PositionAtPrimary();
+        }
+        else
+        {
+            PositionNearCursor();
+        }
+
         _activatedSinceShown = false;
         Show();
 
@@ -572,6 +659,30 @@ internal sealed class MainWindow : Window
         catch (Exception)
         {
             // 多屏/DPI 异常时退回主屏居中
+            ClearValue(LeftProperty);
+            ClearValue(TopProperty);
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        }
+    }
+
+    /// <summary>主屏工作区居中（设置项"弹窗位置=主屏幕"）。DPI 用主屏中心点探测。</summary>
+    private void PositionAtPrimary()
+    {
+        try
+        {
+            var area = WinForms.Screen.PrimaryScreen?.WorkingArea ?? WinForms.Screen.PrimaryScreen.Bounds;
+            var center = new System.Drawing.Point((area.Left + area.Right) / 2, (area.Top + area.Bottom) / 2);
+            double scale = GetDpiScale(center);
+            double width = (ActualWidth > 0 ? ActualWidth : Width) * scale;
+            double height = (ActualHeight > 0 ? ActualHeight : Height) * scale;
+
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Left = (area.Left + (area.Width - width) / 2) / scale;
+            Top = (area.Top + (area.Height - height) / 2) / scale;
+        }
+        catch (Exception)
+        {
+            // 兜底：系统居中
             ClearValue(LeftProperty);
             ClearValue(TopProperty);
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -803,7 +914,15 @@ internal sealed class MainWindow : Window
         }
 
         _usage.RecordUse(selected.StyleId);
-        Hide();
+        if (_settings.HideAfterCopy)
+        {
+            Hide();
+        }
+        else
+        {
+            _statusCount.Text = "已复制 ✓ 可继续换样式（Enter 重复制）";
+        }
+
         return true;
     }
 
@@ -866,6 +985,40 @@ internal sealed class MainWindow : Window
     // ================================================== 全局热键 ==================================================
 
     private void OnSourceInitialized(object? sender, EventArgs e) => AttachHotkey();
+
+    /// <summary>
+    /// 换绑全局热键：注销旧键 → 注册新键；新键被占用时回滚注册旧键（用户无感知）。
+    /// 返回是否新键生效。托盘提示文字随菜单打开时刷新，无需在此通知。
+    /// </summary>
+    internal bool TryRebindHotkey(HotkeyBinding binding)
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        var old = _hotkey;
+
+        if (_hotkeyRegistered)
+        {
+            NativeMethods.UnregisterHotKey(handle, HotkeyId);
+            _hotkeyRegistered = false;
+        }
+
+        _hotkey = binding;
+        _hotkeyRegistered = NativeMethods.RegisterHotKey(
+            handle, HotkeyId, binding.Modifiers, (uint)KeyInterop.VirtualKeyFromKey(binding.Key));
+
+        var ok = _hotkeyRegistered;
+        if (!ok)
+        {
+            // 回滚：把旧键注册回去，保持"仍可用旧键唤出"
+            _hotkey = old;
+            _hotkeyRegistered = NativeMethods.RegisterHotKey(
+                handle, HotkeyId, old.Modifiers, (uint)KeyInterop.VirtualKeyFromKey(old.Key));
+            LogDiag($"hotkey: 换绑失败 combo={binding.Display} err={Marshal.GetLastWin32Error()}，保留 {old.Display}");
+            return false;
+        }
+
+        LogDiag($"hotkey: 换绑成功 {old.Display} -> {binding.Display}");
+        return true;
+    }
 
     /// <summary>
     /// 挂 WndProc 并注册全局热键。不依赖 SourceInitialized——EnsureHandle() 在部分场景不触发该事件，
@@ -944,12 +1097,12 @@ internal sealed class MainWindow : Window
     }
 
     /// <summary>键帽样式的快捷键标签：小圆角边框 + 小字号，比纯文本提示更精致。</summary>
-    private static Border MakeKeycap(string label) => new()
+    private Border MakeKeycap(string label) => new()
     {
         CornerRadius = new CornerRadius(4),
-        BorderBrush = Frozen(0xC8, 0xC3, 0xE8),
+        BorderBrush = _theme.KeycapBorder,
         BorderThickness = new Thickness(1),
-        Background = Frozen(0xEF, 0xED, 0xF9),
+        Background = _theme.KeycapBackground,
         Padding = new Thickness(5, 1.5, 5, 1.5),
         VerticalAlignment = VerticalAlignment.Center,
         Child = new TextBlock
@@ -957,16 +1110,9 @@ internal sealed class MainWindow : Window
             Text = label,
             FontSize = 10,
             FontFamily = new FontFamily("Segoe UI"),
-            Foreground = Frozen(0x50, 0x4E, 0x68),
+            Foreground = _theme.KeycapText,
         },
     };
-
-    private static SolidColorBrush Frozen(byte r, byte g, byte b)
-    {
-        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
-        brush.Freeze(); // 静态画刷冻结，跨线程读取安全
-        return brush;
-    }
 
     /// <summary>
     /// 预览专用 TextBlock：把拉丁区组合符（U+0300–036F、U+0483–0489）拆进独立 Run 并显式指定 Arial。

@@ -14,12 +14,16 @@ public partial class App : Application, IDisposable
 {
     private const string MutexName = @"Local\FancyText.Desktop.SingleInstance";
     private const string ActivateEventName = @"Local\FancyText.Desktop.Activate";
+    private const string SettingsEventName = @"Local\FancyText.Desktop.Settings";
 
     private Mutex? _singleInstanceMutex;
     private EventWaitHandle? _activateSignal;
     private RegisteredWaitHandle? _activateRegistration;
+    private EventWaitHandle? _settingsSignal;
+    private RegisteredWaitHandle? _settingsRegistration;
     private MainWindow? _mainWindow;
     private TrayIconController? _tray;
+    private SettingsWindow? _settingsWindow;
     private bool _ownsMutex;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -38,14 +42,15 @@ public partial class App : Application, IDisposable
         // WinForms 仅用于托盘菜单，开启视觉样式让 ContextMenuStrip 质感与系统一致
         WinForms.Application.EnableVisualStyles();
 
+        var openSettings = e.Args.Contains("--settings", StringComparer.OrdinalIgnoreCase);
         _singleInstanceMutex = new Mutex(initiallyOwned: true, MutexName, out var createdNew);
         _ownsMutex = createdNew; // 二次实例从未拥有互斥体，退出时不可 Release
         if (!createdNew)
         {
-            // 二次启动：唤醒已有实例弹出窗口，自己立即退出
+            // 二次启动：唤醒已有实例（弹窗或设置窗口，取决于参数），自己立即退出
             try
             {
-                using var signal = EventWaitHandle.OpenExisting(ActivateEventName);
+                using var signal = EventWaitHandle.OpenExisting(openSettings ? SettingsEventName : ActivateEventName);
                 signal.Set();
             }
             catch (Exception)
@@ -70,7 +75,36 @@ public partial class App : Application, IDisposable
             millisecondsTimeOutInterval: -1,
             executeOnlyOnce: false);
 
-        _tray = new TrayIconController(_mainWindow);
+        // --settings 二次启动：打开设置窗口（快捷方式/自动化测试入口）
+        _settingsSignal = new EventWaitHandle(false, EventResetMode.AutoReset, SettingsEventName);
+        _settingsRegistration = ThreadPool.RegisterWaitForSingleObject(
+            _settingsSignal,
+            callBack: (_, _) => Dispatcher.BeginInvoke(OpenSettings),
+            state: null,
+            millisecondsTimeOutInterval: -1,
+            executeOnlyOnce: false);
+
+        _tray = new TrayIconController(_mainWindow, OpenSettings);
+    }
+
+    /// <summary>打开设置窗口：单例（已开则提前），随关随清引用。</summary>
+    private void OpenSettings()
+    {
+        if (_settingsWindow is { } open)
+        {
+            open.Activate();
+            return;
+        }
+
+        if (_mainWindow is null)
+        {
+            return;
+        }
+
+        _settingsWindow = new SettingsWindow(_mainWindow);
+        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        _settingsWindow.Show();
+        _settingsWindow.Activate();
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -104,6 +138,11 @@ public partial class App : Application, IDisposable
         _activateRegistration = null;
         _activateSignal?.Dispose();
         _activateSignal = null;
+
+        _settingsRegistration?.Unregister(null);
+        _settingsRegistration = null;
+        _settingsSignal?.Dispose();
+        _settingsSignal = null;
 
         try
         {
