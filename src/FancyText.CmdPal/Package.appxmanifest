@@ -12,7 +12,7 @@
   <Identity
     Name="FancyText.FancyTextForCommandPalette"
     Publisher="CN=FancyText"
-    Version="1.0.0.0" />
+    Version="1.0.1.0" />
 
   <Properties>
     <DisplayName>花式文字 for Command Palette</DisplayName>

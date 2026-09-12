@@ -1,4 +1,5 @@
 using System.Globalization;
+using FancyText.CmdPal.Helpers;
 using FancyText.Core;
 using Microsoft.CommandPalette.Extensions;
 using Microsoft.CommandPalette.Extensions.Toolkit;
@@ -13,9 +14,6 @@ internal abstract partial class DebouncedTextPageBase : DynamicListPage, IDispos
 {
     protected const int DebounceMs = 250;
     private static readonly TimeSpan ClipboardCacheInterval = TimeSpan.FromSeconds(3);
-
-    protected static readonly string DiagLogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FancyText", "diag.log");
 
     private readonly Lock _gate = new();
     private readonly string _diagTag;
@@ -211,25 +209,11 @@ internal abstract partial class DebouncedTextPageBase : DynamicListPage, IDispos
 
     private void WriteDiag(string text, int itemCount)
     {
-        try
-        {
-            var count = ++_rebuildCount;
-            if (count % 100 == 0 && File.Exists(DiagLogPath) && new FileInfo(DiagLogPath).Length > 1_000_000)
-            {
-                File.Delete(DiagLogPath); // 防日志无限增长
-            }
-
-            Directory.CreateDirectory(Path.GetDirectoryName(DiagLogPath)!);
-            var line =
-                $"{DateTime.Now:HH:mm:ss.fff} page={_diagTag} rebuild={count} textLen={text.Length} items={itemCount} " +
-                $"managed={GC.GetTotalMemory(false) / 1024}KB ws={Environment.WorkingSet / 1024}KB " +
-                $"gc0={GC.CollectionCount(0)} gc1={GC.CollectionCount(1)} gc2={GC.CollectionCount(2)}";
-            File.AppendAllText(DiagLogPath, line + Environment.NewLine);
-        }
-        catch (Exception)
-        {
-            // 诊断日志失败不影响功能
-        }
+        var count = ++_rebuildCount;
+        DiagLog.Append(
+            $"page={_diagTag} rebuild={count} textLen={text.Length} items={itemCount} " +
+            $"managed={GC.GetTotalMemory(false) / 1024}KB ws={Environment.WorkingSet / 1024}KB " +
+            $"gc0={GC.CollectionCount(0)} gc1={GC.CollectionCount(1)} gc2={GC.CollectionCount(2)}");
     }
 
     public void Dispose()
