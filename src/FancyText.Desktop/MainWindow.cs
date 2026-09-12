@@ -142,32 +142,14 @@ internal sealed class MainWindow : Window
 
     private void BuildUi()
     {
-        // 标题栏：应用名 + 提示；空白处按住可拖动窗口
+        // 标题栏：无文字，纯隐形拖动条（按住空白处拖动窗口）
         var header = new DockPanel
         {
-            Margin = new Thickness(18, 10, 18, 0),
+            MinHeight = 12,
+            Margin = new Thickness(18, 6, 18, 0),
             Cursor = Cursors.SizeAll,
             Background = Brushes.Transparent, // 命中测试需要非 null 背景
         };
-        var title = new TextBlock
-        {
-            Text = "花式文字",
-            FontSize = 12,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = PrimaryBrush,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        var headerHint = new TextBlock
-        {
-            Text = "拖动窗口",
-            FontSize = 10,
-            Foreground = MetaBrush,
-            VerticalAlignment = VerticalAlignment.Center,
-            Opacity = 0.55,
-        };
-        DockPanel.SetDock(headerHint, Dock.Right);
-        header.Children.Add(headerHint);
-        header.Children.Add(title);
         header.MouseLeftButtonDown += OnHeaderDrag;
 
         // 顶部：输入框。做法：默认 TextBox（IME/编辑器链路保持原生完整——自定义模板曾导致无法输入）
@@ -713,7 +695,7 @@ internal sealed class MainWindow : Window
         }
 
         var truncated = !string.Equals(previewInput, text, StringComparison.Ordinal);
-        _statusCount.Text = $"{items.Count} 个可用样式 · {_hotkey.Display} 唤出"
+        _statusCount.Text = $"{items.Count} 个可用样式"
             + (truncated ? $" · 预览仅前 {PreviewMaxGraphemes} 字，回车复制完整结果" : string.Empty);
     }
 
