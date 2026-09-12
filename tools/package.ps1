@@ -1,0 +1,59 @@
+﻿# ASCII-safe ids; Chinese only in README content written with explicit UTF8 encoding.
+# Packages FancyText Desktop as a self-contained single-file exe + README into dist/.
+$ErrorActionPreference = 'Stop'
+
+$root = Split-Path $PSScriptRoot -Parent
+$version = '1.1.0'
+$outDir = Join-Path $root 'dist'
+$stage = Join-Path $outDir "FancyText.Desktop-$version"
+$zipPath = Join-Path $outDir "FancyText.Desktop-$version-win-x64.zip"
+
+if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+New-Item -ItemType Directory -Path $stage -Force | Out-Null
+
+Write-Host '== publish self-contained single file =='
+dotnet publish (Join-Path $root 'src\FancyText.Desktop') -c Release -r win-x64 `
+    --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+    -o $stage
+if ($LASTEXITCODE -ne 0) { throw 'publish failed' }
+
+# pdb 是调试符号，分发不需要（白占体积）
+Get-ChildItem $stage -Filter *.pdb | Remove-Item -Force
+
+$readme = @'
+花式文字 桌面版 v1.1.0
+======================
+
+花式 Unicode 文字转换弹窗：126 种样式实时预览，回车复制。
+
+快速上手
+--------
+1. 双击 FancyText.Desktop.exe 启动（常驻托盘，不占任务栏）。
+2. 按 Ctrl+Alt+F 唤出，输入文字，↑↓ 浏览样式，Enter 复制并收起。
+   - Ctrl+D 收藏 / Ctrl+R 随机换一个 / Esc 收起
+   - 复制了文字再唤出会自动预填，直接选样式即可
+3. 托盘图标右键：打开 / 设置 / 退出。
+
+设置
+----
+托盘右键 -> 设置（或运行 exe --settings）：
+主题（浅色/深色/跟随系统）、强调色、预览字号、唤出快捷键、
+开机自启动、唤出时预填剪贴板、复制后收起、弹窗位置。
+
+说明
+----
+- 绿色软件：单文件、免安装。配置在 %LOCALAPPDATA%\FancyText\
+  （desktop.json 设置 / state.json 收藏与最近 / diag.log 诊断日志）。
+- 卸载：托盘退出后删除 exe 即可；若开过"开机自启动"，先在设置里关掉。
+- 姊妹项目：PowerToys Command Palette 插件版（另附），收藏数据互通。
+'@
+
+[System.IO.File]::WriteAllText((Join-Path $stage 'README.txt'), $readme, [System.Text.UTF8Encoding]::new($true))
+
+Write-Host '== zip =='
+Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zipPath -Force
+Remove-Item $stage -Recurse -Force
+
+$size = (Get-Item $zipPath).Length / 1MB
+Write-Host ("done: {0} ({1:N1} MB)" -f $zipPath, $size)

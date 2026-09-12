@@ -51,6 +51,7 @@ internal sealed class MainWindow : Window
 
     private readonly UsageState _usage;
     private readonly DispatcherTimer _debounce;
+    private readonly DispatcherTimer _trimTimer;
     private HotkeyBinding _hotkey;
 
     // 可被 BuildUi 整体重建（主题切换时全量换新实例，避免逐控件回填笔刷）
@@ -74,6 +75,10 @@ internal sealed class MainWindow : Window
 
         _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(DebounceMs) };
         _debounce.Tick += (_, _) => { _debounce.Stop(); RebuildList(); };
+
+        // 隐藏 1.5s 后修剪工作集；期间再唤出则取消（修剪后唤出要靠软缺页换回页面，会慢几十 ms）
+        _trimTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+        _trimTimer.Tick += (_, _) => { _trimTimer.Stop(); TrimWorkingSet(); };
 
         Title = "花式文字";
         Width = 540;
@@ -544,6 +549,8 @@ internal sealed class MainWindow : Window
             return; // 应用退出中
         }
 
+        _trimTimer.Stop(); // 取消待执行的修剪：唤出路径需要全部页面驻留
+
         if (IsVisible)
         {
             SafeActivate(); // 已打开时只提前
@@ -728,7 +735,34 @@ internal sealed class MainWindow : Window
         // 若一显示就 Deactivated 会把弹窗"闪没"。
         if (_activatedSinceShown)
         {
-            Hide();
+            HideAndScheduleTrim();
+        }
+    }
+
+    /// <summary>隐藏并安排工作集修剪（1.5s 后执行，期间唤出则取消）。所有隐藏路径统一走这里。</summary>
+    private void HideAndScheduleTrim()
+    {
+        Hide();
+        _trimTimer.Stop();
+        _trimTimer.Start();
+    }
+
+    /// <summary>
+    /// 轻量化核心手段：EmptyWorkingSet 把工作集整页换出，任务管理器常驻观感从 ~117MB 降到 10-25MB。
+    /// 代价是下次唤出要靠软缺页换回页面（慢几十 ms），故只在隐藏一段时间后调用。
+    /// </summary>
+    private static void TrimWorkingSet()
+    {
+        try
+        {
+            var before = System.Diagnostics.Process.GetCurrentProcess().WorkingSet64;
+            _ = NativeMethods.EmptyWorkingSet(NativeMethods.GetCurrentProcess());
+            var after = System.Diagnostics.Process.GetCurrentProcess().WorkingSet64;
+            LogDiag($"trim: workingset {before / 1024 / 1024}MB -> {after / 1024 / 1024}MB");
+        }
+        catch (Exception ex)
+        {
+            LogDiag($"trim: 失败（不影响功能） {ex.GetType().Name}");
         }
     }
 
@@ -866,7 +900,7 @@ internal sealed class MainWindow : Window
 
                 break;
             case Key.Escape:
-                Hide();
+                HideAndScheduleTrim();
                 e.Handled = true;
                 break;
             case Key.D when Keyboard.Modifiers == ModifierKeys.Control:
@@ -916,7 +950,7 @@ internal sealed class MainWindow : Window
         _usage.RecordUse(selected.StyleId);
         if (_settings.HideAfterCopy)
         {
-            Hide();
+            HideAndScheduleTrim();
         }
         else
         {

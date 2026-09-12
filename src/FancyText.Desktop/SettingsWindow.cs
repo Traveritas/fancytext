@@ -18,6 +18,10 @@ internal sealed class SettingsWindow : Window
     private const string AutoRunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string AutoRunName = "FancyText";
 
+    /// <summary>程序集版本（csproj &lt;Version&gt;），设置页与打包共用。</summary>
+    internal static string AppVersion =>
+        typeof(SettingsWindow).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" : "1.0";
+
     /// <summary>预设强调色：覆盖常见偏好，默认紫在首位。</summary>
     private static readonly string[] AccentPresets =
     [
@@ -83,7 +87,7 @@ internal sealed class SettingsWindow : Window
 
         // —— 关于 ——
         root.Children.Add(MakeGroupHeader("关于"));
-        root.Children.Add(MakeRow("版本", MakeMetaText("1.0")));
+        root.Children.Add(MakeRow("版本", MakeMetaText(AppVersion)));
         root.Children.Add(MakeAboutRow());
 
         var scroll = new ScrollViewer

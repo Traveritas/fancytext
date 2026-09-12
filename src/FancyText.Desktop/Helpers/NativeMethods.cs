@@ -64,4 +64,14 @@ internal static class NativeMethods
     /// <summary>Win11 圆角等窗口属性（DWMWA_WINDOW_CORNER_PREFERENCE=33）。返回 HRESULT，0=成功。</summary>
     [DllImport("dwmapi.dll")]
     public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+    // ---------- 工作集修剪（轻量化：隐藏后把常驻内存观感从 ~117MB 压到 10-25MB） ----------
+
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr GetCurrentProcess(); // 伪句柄，无需关闭
+
+    /// <summary>把当前进程工作集整页换出。唤醒时靠软缺页换回（首次唤出慢几十 ms），
+    /// 故只在隐藏 1.5s 后调用，且期间再次唤出会取消。</summary>
+    [DllImport("psapi.dll")]
+    public static extern uint EmptyWorkingSet(IntPtr hProcess);
 }
