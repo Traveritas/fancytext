@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using FancyText.Core;
 
@@ -24,8 +25,14 @@ public partial class App : Application, IDisposable
     {
         base.OnStartup(e);
 
-        // 常驻托盘工具：未处理异常只丢掉当次操作，不应把整个进程带走
-        DispatcherUnhandledException += (_, args) => args.Handled = true;
+        // 常驻托盘工具：未处理异常只丢掉当次操作，不应把整个进程带走。
+        // 但必须留下证据（写诊断日志），否则启动路径上的异常会让进程变成"无窗口无托盘"的空壳且无从排查。
+        DispatcherUnhandledException += (_, args) =>
+        {
+            LogDiag($"未处理异常: {args.Exception}");
+            args.Handled = true;
+        };
+        LogDiag("startup: OnStartup 开始");
 
         // WinForms 仅用于托盘菜单，开启视觉样式让 ContextMenuStrip 质感与系统一致
         WinForms.Application.EnableVisualStyles();
@@ -68,6 +75,21 @@ public partial class App : Application, IDisposable
     {
         Dispose();
         base.OnExit(e);
+    }
+
+    internal static void LogDiag(string line)
+    {
+        try
+        {
+            var path = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FancyText", "diag.log");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.AppendAllText(path, $"{DateTime.Now:HH:mm:ss.fff} desktop {line}{Environment.NewLine}");
+        }
+        catch (Exception)
+        {
+            // 诊断日志失败不影响功能
+        }
     }
 
     /// <summary>退出清理。重复调用安全（字段逐个置空）。</summary>

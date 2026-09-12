@@ -1,3 +1,5 @@
+using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -85,8 +87,10 @@ internal sealed class MainWindow : Window
         Closed += OnClosed;
         _usage.Changed += OnUsageChanged;
 
-        // 只创建 HWND（挂 WndProc、注册热键），窗口保持隐藏
+        // 只创建 HWND（挂 WndProc、注册热键），窗口保持隐藏。
+        // 注意：EnsureHandle() 不保证触发 SourceInitialized，热键在这里直接注册。
         new WindowInteropHelper(this).EnsureHandle();
+        AttachHotkey();
     }
 
     /// <summary>托盘提示用：当前生效的热键显示文本（如 Ctrl+Alt+F）。</summary>
@@ -196,18 +200,24 @@ internal sealed class MainWindow : Window
         presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
         presenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
         border.AppendChild(presenter);
-        style.Setters.Add(new Setter(Control.TemplateProperty,
-            new ControlTemplate(typeof(RadioButton)) { VisualTree = border }));
+        // TargetName 的 Setter 只能用于模板触发器；样式触发器只能作用于控件自身属性
+        // （原先放在 Style.Triggers 里会在 Seal 时抛 InvalidOperationException，导致整个窗口构建失败）
+        var template = new ControlTemplate(typeof(RadioButton)) { VisualTree = border };
 
         var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
         hover.Setters.Add(new Setter(Border.BackgroundProperty, HoverChipBrush, "ChipBorder"));
-        style.Triggers.Add(hover);
+        template.Triggers.Add(hover);
 
         var checkedTrigger = new Trigger { Property = ToggleButton.IsCheckedProperty, Value = true };
         checkedTrigger.Setters.Add(new Setter(Border.BackgroundProperty, PrimaryBrush, "ChipBorder"));
         checkedTrigger.Setters.Add(new Setter(Border.BorderBrushProperty, PrimaryBrush, "ChipBorder"));
-        checkedTrigger.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
-        style.Triggers.Add(checkedTrigger);
+        template.Triggers.Add(checkedTrigger);
+
+        style.Setters.Add(new Setter(Control.TemplateProperty, template));
+
+        var checkedForeground = new Trigger { Property = ToggleButton.IsCheckedProperty, Value = true };
+        checkedForeground.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
+        style.Triggers.Add(checkedForeground);
 
         return style;
     }
@@ -618,17 +628,51 @@ internal sealed class MainWindow : Window
 
     // ================================================== 全局热键 ==================================================
 
-    private void OnSourceInitialized(object? sender, EventArgs e)
+    private void OnSourceInitialized(object? sender, EventArgs e) => AttachHotkey();
+
+    /// <summary>
+    /// 挂 WndProc 并注册全局热键。不依赖 SourceInitialized——EnsureHandle() 在部分场景不触发该事件，
+    /// 因此构造函数创建句柄后直接调用；此方法幂等（已注册则跳过）。结果写入诊断日志。
+    /// </summary>
+    private void AttachHotkey()
     {
-        _hwndSource = (HwndSource)PresentationSource.FromVisual(this);
-        _hwndSource.AddHook(WndProc);
+        if (_hotkeyRegistered)
+        {
+            return;
+        }
+
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero)
+        {
+            LogDiag("hotkey: 句柄尚未创建，跳过注册");
+            return;
+        }
+
+        _hwndSource ??= HwndSource.FromHwnd(handle);
+        _hwndSource?.AddHook(WndProc);
 
         // 注册失败（如热键被其它程序占用）不致命：托盘双击仍可唤出
         _hotkeyRegistered = NativeMethods.RegisterHotKey(
-            _hwndSource.Handle,
+            handle,
             HotkeyId,
             _hotkey.Modifiers,
             (uint)KeyInterop.VirtualKeyFromKey(_hotkey.Key));
+        LogDiag($"hotkey: 注册 {(_hotkeyRegistered ? "成功" : "失败")} combo={_hotkey.Display} err={Marshal.GetLastWin32Error()}");
+    }
+
+    private static void LogDiag(string line)
+    {
+        try
+        {
+            var path = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FancyText", "diag.log");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.AppendAllText(path, $"{DateTime.Now:HH:mm:ss.fff} desktop {line}{Environment.NewLine}");
+        }
+        catch (Exception)
+        {
+            // 诊断日志失败不影响功能
+        }
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
