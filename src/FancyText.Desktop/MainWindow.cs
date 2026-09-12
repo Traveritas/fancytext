@@ -475,8 +475,8 @@ internal sealed class MainWindow : Window
         preview.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
         preview.SetValue(TextBlock.MarginProperty, new Thickness(0, 0, 0, 3));
 
-        var meta = new FrameworkElementFactory(typeof(TextBlock));
-        meta.SetBinding(TextBlock.TextProperty, new Binding(nameof(StyleListItem.Meta)));
+        var meta = new FrameworkElementFactory(typeof(PreviewTextBlock.MetaTextBlock));
+        meta.SetBinding(PreviewTextBlock.TextProperty, new Binding(nameof(StyleListItem.Meta)));
         meta.SetValue(TextBlock.FontSizeProperty, 11.5d);
         meta.SetValue(TextBlock.ForegroundProperty, _theme.Meta);
         meta.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
@@ -1156,14 +1156,25 @@ internal sealed class MainWindow : Window
     /// 机制：WPF 按 script 切 run，Inherited 组合符继承基字 script，整簇锁死在基字字体（CJK=雅黑）
     /// 永不回退 → 豆腐；自带 script 的符号（藏/泰/南亚）WPF 自行切分回退，无需处理（Resolve 返回 null）。
     /// </summary>
-    private sealed class PreviewTextBlock : TextBlock
+    private class PreviewTextBlock : TextBlock
     {
         private static readonly FontFamily BaseFont = new(PreviewFontChain);
+
+        /// <summary>样式名行（meta）的基链：样式名里藏/泰符号与 emoji 兼有，追加 Emoji 兜底
+        /// （预览行不追加——白加载大字体；输入框绝不能加——链名超 LOGFONT 32 字符会杀死 IME）。</summary>
+        private static readonly FontFamily MetaBaseFont = new(PreviewFontChain + ", Segoe UI Emoji");
+
         private static readonly Dictionary<string, FontFamily> FontFamilyCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly FontFamily _baseFont;
         private bool _building;
 
-        public PreviewTextBlock()
+        public PreviewTextBlock() : this(forMeta: false)
         {
+        }
+
+        public PreviewTextBlock(bool forMeta)
+        {
+            _baseFont = forMeta ? MetaBaseFont : BaseFont;
             // TextBlock.OnPropertyChanged 是密封的，只能用描述符监听 Text 变化
             System.ComponentModel.DependencyPropertyDescriptor
                 .FromProperty(TextProperty, typeof(TextBlock))
@@ -1194,6 +1205,15 @@ internal sealed class MainWindow : Window
             return family;
         }
 
+        /// <summary>样式名行（meta）专用：基链追加 Segoe UI Emoji（样式名里藏/泰符号与 emoji 兼有）。
+        /// FrameworkElementFactory 不支持构造参数，用无参子类路由。</summary>
+        internal sealed class MetaTextBlock : PreviewTextBlock
+        {
+            public MetaTextBlock() : base(forMeta: true)
+            {
+            }
+        }
+
         private void BuildRuns()
         {
             _building = true;
@@ -1207,7 +1227,7 @@ internal sealed class MainWindow : Window
                     if (buffer.Length == 0) return;
                     Inlines.Add(new System.Windows.Documents.Run(buffer.ToString())
                     {
-                        FontFamily = current ?? BaseFont,
+                        FontFamily = current ?? _baseFont,
                     });
                     buffer.Clear();
                 }
