@@ -167,7 +167,10 @@ internal sealed class MainWindow : Window
         _inputBox.FontSize = 18;
         _inputBox.Padding = new Thickness(11, 9, 11, 9);
         _inputBox.VerticalContentAlignment = VerticalAlignment.Center;
-        _inputBox.FontFamily = new FontFamily(PreviewFontChain);
+        // 注意：输入框不设字体回退链——WPF 会把字体名传给 IME（组合窗口字体），
+        // 链式多字体名超过 LOGFONT 32 字符上限是非法名，会导致 IME 组合失败、无法打字（能删不能输）。
+        // 预览列表的 TextBlock 不参与 IME，保留完整回退链防豆腐块。
+        // _inputBox.FontFamily = new FontFamily(PreviewFontChain);
         _inputBox.BorderThickness = new Thickness(0);
         _inputBox.Background = Brushes.Transparent;
         _inputBox.CaretBrush = PrimaryBrush;

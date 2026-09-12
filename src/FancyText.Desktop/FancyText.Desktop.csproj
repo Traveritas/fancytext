@@ -11,8 +11,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <!-- 轻量化：不变文化模式省去 ICU 初始化（本项目全部字符串操作均用 Ordinal/Invariant） -->
-    <InvariantGlobalization>true</InvariantGlobalization>
     <Company>FancyText</Company>
     <Product>花式文字桌面版</Product>
   </PropertyGroup>
