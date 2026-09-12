@@ -1,12 +1,12 @@
 using System.Text.Json;
 
-namespace FancyText.CmdPal.Helpers;
+namespace FancyText.Core;
 
 /// <summary>
-/// 收藏与最近使用状态，持久化到 %LOCALAPPDATA%\FancyText\state.json。
-/// 状态变化广播 <see cref="Changed"/>，各页面据此重建（收藏星标、首页分区）。
+/// 收藏与最近使用状态，持久化到 %LOCALAPPDATA%\FancyText\state.json（CmdPal 插件与桌面版共享）。
+/// 状态变化广播 <see cref="Changed"/>，宿主 UI 据此刷新。
 /// </summary>
-internal sealed class UsageState
+public sealed class UsageState
 {
     private const int RecentCap = 8;
     private const int PinnedCap = 20;
@@ -16,7 +16,7 @@ internal sealed class UsageState
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    private readonly Lock _gate = new();
+    private readonly object _gate = new();
     private List<string> _pinned = [];
     private List<string> _recent = [];
 

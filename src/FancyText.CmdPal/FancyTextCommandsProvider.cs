@@ -8,7 +8,7 @@ namespace FancyText.CmdPal;
 public sealed partial class FancyTextCommandsProvider : CommandProvider
 {
     private readonly SharedTextState _shared = new();
-    private readonly Helpers.UsageState _usage = new();
+    private readonly UsageState _usage = new();
 
     private readonly FancyTextStylesPage _allStylesPage;
     private readonly IReadOnlyDictionary<TextStyleCategory, FancyTextStylesPage> _categoryPages;
