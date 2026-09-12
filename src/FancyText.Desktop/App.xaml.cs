@@ -66,6 +66,9 @@ public partial class App : Application, IDisposable
         var usage = new UsageState();
         _mainWindow = new MainWindow(usage);
 
+        // 后台预热字体覆盖表（约 200ms）：组合符动态解析就绪，首次唤出零等待
+        System.Threading.Tasks.Task.Run(() => Helpers.FontCoverage.Warmup());
+
         // 已有实例被二次启动唤醒：线程池回调必须转回 UI 线程才能操作窗口
         _activateSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ActivateEventName);
         _activateRegistration = ThreadPool.RegisterWaitForSingleObject(

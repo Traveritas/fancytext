@@ -677,7 +677,8 @@ internal sealed class MainWindow : Window
     {
         try
         {
-            var area = WinForms.Screen.PrimaryScreen?.WorkingArea ?? WinForms.Screen.PrimaryScreen.Bounds;
+            var screen = WinForms.Screen.PrimaryScreen ?? WinForms.Screen.FromPoint(System.Drawing.Point.Empty);
+            var area = screen.WorkingArea;
             var center = new System.Drawing.Point((area.Left + area.Right) / 2, (area.Top + area.Bottom) / 2);
             double scale = GetDpiScale(center);
             double width = (ActualWidth > 0 ? ActualWidth : Width) * scale;
@@ -1149,20 +1150,16 @@ internal sealed class MainWindow : Window
     };
 
     /// <summary>
-    /// 预览专用 TextBlock：把"Inherited"类组合符拆进独立 Run 并按码点指定字体。
-    /// WPF 文本引擎按 Unicode script 切分 run：自带文字系统的符号（藏 0F7C/泰 0E49/南亚 0B8A 等）
-    /// 会被切成独立 run 走链内字体正常回退；而 Inherited 类组合符（拉丁 0300–036F、西里尔 0483–0489、
-    /// 组合记号 20D0–20FF、西里尔大数 A670 段）继承基字的 script，整簇锁死在基字字体（CJK=雅黑），
-    /// 永不回退 → 豆腐块。FontProbe 实测字体链/CompositeFont 均无解，唯一可行是手动拆 Run。
-    /// 各码点的字体归宿由 font-coverage.ps1 枚举系统字体实测得出（详见各分支注释）。
+    /// 预览专用 TextBlock：把组合符白名单（Unicode 16 Script=Inherited ∪ 实证豆腐段）里的码点
+    /// 拆进独立 Run，归宿字体由 FontCoverage 动态解析（GDI 全字体覆盖表查询，启动后台预热）——
+    /// 任何码点自动找到真实覆盖它的字体，不再逐区间硬编码。
+    /// 机制：WPF 按 script 切 run，Inherited 组合符继承基字 script，整簇锁死在基字字体（CJK=雅黑）
+    /// 永不回退 → 豆腐；自带 script 的符号（藏/泰/南亚）WPF 自行切分回退，无需处理（Resolve 返回 null）。
     /// </summary>
     private sealed class PreviewTextBlock : TextBlock
     {
         private static readonly FontFamily BaseFont = new(PreviewFontChain);
-        private static readonly FontFamily LatinMarkFont = new("Arial");            // 0300–036F、0483–0489 全覆盖
-        private static readonly FontFamily SymbolMarkFont = new("Segoe UI Symbol"); // 20D0–20FF 除 20DD 外全覆盖
-        private static readonly FontFamily CambriaMarkFont = new("Cambria");        // 20DD 包围圆：Symbol 无、Cambria 有
-        private static readonly FontFamily SegoeUiFont = new("Segoe UI");           // A670/A672 西里尔大数组合符
+        private static readonly Dictionary<string, FontFamily> FontFamilyCache = new(StringComparer.OrdinalIgnoreCase);
         private bool _building;
 
         public PreviewTextBlock()
@@ -1179,16 +1176,23 @@ internal sealed class MainWindow : Window
                 BuildRuns();
         }
 
-        /// <summary>Inherited 类组合符 → 归宿字体；null = 非此类（连同基字留在回退链里）。</summary>
-        private static FontFamily? MarkFontFor(char ch) => ch switch
+        /// <summary>组合符码点 → 归宿字体（同名缓存同一实例，供 Run 分段按引用比较）；null = 留基链。</summary>
+        private static FontFamily? MarkFontFor(char ch)
         {
-            >= '\u0300' and <= '\u036F' => LatinMarkFont,
-            >= '\u0483' and <= '\u0489' => LatinMarkFont,
-            '\u20DD' => CambriaMarkFont,
-            >= '\u20D0' and <= '\u20FF' => SymbolMarkFont, // 顶箭头/包围框/菱形/禁止/三角/雪花等
-            >= '\uA670' and <= '\uA672' => SegoeUiFont,
-            _ => null,
-        };
+            var name = FontCoverage.Resolve(ch);
+            if (name is null)
+            {
+                return null;
+            }
+
+            if (!FontFamilyCache.TryGetValue(name, out var family))
+            {
+                family = new FontFamily(name);
+                FontFamilyCache[name] = family;
+            }
+
+            return family;
+        }
 
         private void BuildRuns()
         {
