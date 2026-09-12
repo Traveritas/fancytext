@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <!-- WinForms 仅为托盘 NotifyIcon 与鼠标/屏幕定位（Cursor.Position / Screen.FromPoint），不渲染 WinForms 控件 -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>FancyText.Desktop</RootNamespace>
+    <AssemblyName>FancyText.Desktop</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Company>FancyText</Company>
+    <Product>花式文字桌面版</Product>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FancyText.Core\FancyText.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 撤销 UseWindowsForms 隐式加的全局 using（System.Windows.Forms / System.Drawing），
+         否则 Brush/TextBox/Application 等与 WPF 同名类型产生 CS0104 歧义；WinForms 类型一律用别名显式引用 -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+</Project>

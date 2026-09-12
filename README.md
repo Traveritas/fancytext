@@ -25,7 +25,20 @@
 | 中文 | 2 | 火星文（2088 字字典）、火星文还原 |
 | 编码 | 8 | Base64、ROT13、摩斯电码、盲文 ⠓⠑⠇⠇⠕、NATO、A1Z26、二进制、十六进制 |
 
-## 命令行工具（独立形态 #1）
+## 独立桌面版（产品线 #2，无需 PowerToys）
+
+WPF 弹窗式转换器：托盘常驻 + 全局热键，**与插件共享同一引擎和收藏**（`%LOCALAPPDATA%\FancyText\state.json`）。
+
+```bash
+# 构建/单文件发布（产物约 270KB，需 .NET 8 运行时；改 --self-contained true 可免装运行时）
+dotnet publish src/FancyText.Desktop -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true
+```
+
+- **唤出**：全局热键 `Ctrl+Alt+F`（改热键：编辑 `%LOCALAPPDATA%\FancyText\desktop.json`，格式 `{"hotkey":"Ctrl+Alt+Shift+G"}`）、托盘双击、或再次运行 exe；单实例。
+- **弹窗**：自动预填剪贴板（无则示例文字），输入实时预览（150ms 防抖，预览只转换前 64 字素）；窗口出现在鼠标附近，点击别处自动隐藏。
+- **操作**：`Enter` 复制选中样式的**全文**转换并隐藏；`Esc` 隐藏；`Ctrl+D` 收藏（⭐，插件同步可见）；`Ctrl+R` 随机换一个；`↑↓` 浏览；分类筛选含全部/收藏/最近/六大类。
+
+## 命令行工具（开发/脚本用途）
 
 ```bash
 dotnet publish src/FancyText.Cli -c Release -r win-x64 -p:PublishSingleFile=true --self-contained false
@@ -58,6 +71,7 @@ src/FancyText.CmdPal/      Command Palette 扩展（WinUI3 / MSIX）
   Commands/StateCommands.cs      收藏切换 / 跳转分类
   Helpers/UsageState.cs          收藏与最近使用（%LOCALAPPDATA%\FancyText\state.json）
 src/FancyText.Cli/         命令行工具 fancy（--list/--json/--random/单样式）
+src/FancyText.Desktop/     独立桌面版（WPF：全局热键 + 托盘 + 弹窗转换器，与插件共享收藏）
 tests/FancyText.Core.Tests/  自检测试（117 项断言）+ `-- demo`（效果预览）+ `-- bench`（性能基准）
 reference/                 参考项目（ChangeCaseExtension、cnchar 克隆，仅研读，不参与构建）
 docs/                      调研报告、独立工具探索

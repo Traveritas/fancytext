@@ -5,6 +5,9 @@
     </Project>
     <Project Path="src/FancyText.CmdPal/FancyText.CmdPal.csproj" />
     <Project Path="src/FancyText.Core/FancyText.Core.csproj" />
+    <Project Path="src/FancyText.Desktop/FancyText.Desktop.csproj">
+      <Platform Project="x64" />
+    </Project>
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FancyText.Core.Tests/FancyText.Core.Tests.csproj" />

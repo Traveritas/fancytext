@@ -1,0 +1,9 @@
+<Application x:Class="FancyText.Desktop.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <!-- 无 StartupUri：主窗口在 OnStartup 手动创建并保持隐藏，进程只以托盘 + 全局热键常驻；
+         弹窗的显示/隐藏都不退出应用，只能从托盘菜单退出（OnExplicitShutdown） -->
+    <Application.Resources>
+    </Application.Resources>
+</Application>
