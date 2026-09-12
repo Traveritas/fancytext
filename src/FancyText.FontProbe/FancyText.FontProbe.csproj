@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>FancyText.FontProbe</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="FancyProbe.CompositeFont" />
+  </ItemGroup>
+</Project>

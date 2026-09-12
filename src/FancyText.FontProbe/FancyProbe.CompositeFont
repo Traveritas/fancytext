@@ -1,0 +1,15 @@
+<CompositeFont xmlns="http://schemas.microsoft.com/winfx/2006/xaml/composite-font"
+               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <FontFamily.FamilyNames>
+    <x:String x:Key="en-US">FancyProbe</x:String>
+  </FontFamily.FamilyNames>
+  <FontFamily.FamilyMaps>
+    <FontFamilyMap Unicode="0000-02ff" Target="Arial"/>
+    <FontFamilyMap Unicode="0300-036f" Target="Arial"/>
+    <FontFamilyMap Unicode="0370-04ff" Target="Arial"/>
+    <FontFamilyMap Unicode="0e00-0e7f" Target="Leelawadee UI"/>
+    <FontFamilyMap Unicode="0f00-0fff" Target="Microsoft Himalaya"/>
+    <FontFamilyMap Unicode="4e00-9fff" Target="Microsoft YaHei UI"/>
+    <FontFamilyMap Target="Microsoft YaHei UI"/>
+  </FontFamily.FamilyMaps>
+</CompositeFont>

@@ -25,6 +25,7 @@ namespace FancyText.Desktop;
 internal sealed class MainWindow : Window
 {
     private const int WM_HOTKEY = 0x0312;
+    private const int WM_NCCALCSIZE = 0x0083;
     private const int HotkeyId = 0x4654; // "FT"，进程内唯一即可
     private const int PreviewMaxGraphemes = 64;
     private const int MaxPreviewChars = 160;
@@ -48,7 +49,7 @@ internal sealed class MainWindow : Window
     /// 特意不含 Segoe UI Emoji——Windows 不渲染国旗 emoji，区域指示符 Symbol 即可覆盖，白加载一个大字体。
     /// </summary>
     private const string PreviewFontChain =
-        "Microsoft YaHei UI, Segoe UI Symbol, Segoe UI Historic, " +
+        "Microsoft YaHei UI, Segoe UI, Segoe UI Symbol, Segoe UI Historic, " +
         "Nirmala UI, Ebrima, Microsoft Himalaya, Leelawadee UI, Lao UI, Sylfaen";
 
     private static readonly Dictionary<string, TextStyle> StylesById =
@@ -120,6 +121,13 @@ internal sealed class MainWindow : Window
             var preference = 2; // DWMWCP_ROUND
             _ = NativeMethods.DwmSetWindowAttribute(
                 handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref preference, sizeof(int));
+
+            // Win11 给圆角窗口自带的 1px 描边（顶部最明显，用户观感是"残边"）；
+            // NCCALCSIZE 只能去掉非客户区残边，这条是 DWM 画的，必须用边框色属性关掉
+            const int DWMWA_BORDER_COLOR = 34;
+            var noColor = unchecked((int)0xFFFFFFFE); // DWMWA_COLOR_NONE
+            _ = NativeMethods.DwmSetWindowAttribute(
+                handle, DWMWA_BORDER_COLOR, ref noColor, sizeof(int));
         }
         catch (Exception ex)
         {
@@ -151,11 +159,11 @@ internal sealed class MainWindow : Window
         };
         var headerHint = new TextBlock
         {
-            Text = "Esc 收起 · 空白处拖动",
-            FontSize = 10.5,
+            Text = "拖动窗口",
+            FontSize = 10,
             Foreground = MetaBrush,
             VerticalAlignment = VerticalAlignment.Center,
-            Opacity = 0.8,
+            Opacity = 0.55,
         };
         DockPanel.SetDock(headerHint, Dock.Right);
         header.Children.Add(headerHint);
@@ -218,17 +226,31 @@ internal sealed class MainWindow : Window
             filterPanel.Children.Add(chip);
         }
 
-        // 底部状态栏：左（样式数 + 热键/截断提示），右（快捷键说明），顶一条细分隔线
+        // 底部状态栏：左侧样式数，右侧键帽式快捷键提示（细线分隔，观感对齐现代小工具）
         _statusCount.FontSize = 11.5;
         _statusCount.Foreground = MetaBrush;
         _statusCount.TextTrimming = TextTrimming.CharacterEllipsis;
-        var hints = new TextBlock
+        _statusCount.VerticalAlignment = VerticalAlignment.Center;
+        var hints = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        foreach (var (key, action) in new[] { ("Enter", "复制"), ("Ctrl+D", "收藏"), ("Ctrl+R", "随机"), ("Esc", "收起") })
         {
-            FontSize = 11.5,
-            Foreground = MetaBrush,
-            Text = "Enter 复制并隐藏 · Ctrl+D 收藏 · Ctrl+R 换一批",
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        };
+            if (hints.Children.Count > 0)
+            {
+                hints.Children.Add(new Border { Width = 9 });
+            }
+
+            hints.Children.Add(MakeKeycap(key));
+            var label = new TextBlock
+            {
+                Text = action,
+                FontSize = 10.5,
+                Foreground = MetaBrush,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(4, 0, 0, 0),
+            };
+            hints.Children.Add(label);
+        }
+
         var status = new DockPanel
         {
             Margin = new Thickness(16, 8, 16, 12),
@@ -387,8 +409,8 @@ internal sealed class MainWindow : Window
     {
         var panel = new FrameworkElementFactory(typeof(StackPanel));
 
-        var preview = new FrameworkElementFactory(typeof(TextBlock));
-        preview.SetBinding(TextBlock.TextProperty, new Binding(nameof(StyleListItem.PreviewText)));
+        var preview = new FrameworkElementFactory(typeof(PreviewTextBlock));
+        preview.SetBinding(PreviewTextBlock.TextProperty, new Binding(nameof(StyleListItem.PreviewText)));
         preview.SetValue(TextBlock.FontSizeProperty, 16d);
         preview.SetValue(TextBlock.FontWeightProperty, FontWeights.Medium);
         preview.SetValue(TextBlock.FontFamilyProperty, new FontFamily(PreviewFontChain)); // 花式字符回退链，防豆腐块
@@ -691,7 +713,7 @@ internal sealed class MainWindow : Window
         }
 
         var truncated = !string.Equals(previewInput, text, StringComparison.Ordinal);
-        _statusCount.Text = $"共 {items.Count} 个样式 · {_hotkey.Display} 唤出"
+        _statusCount.Text = $"{items.Count} 个可用样式 · {_hotkey.Display} 唤出"
             + (truncated ? $" · 预览仅前 {PreviewMaxGraphemes} 字，回车复制完整结果" : string.Empty);
     }
 
@@ -915,6 +937,13 @@ internal sealed class MainWindow : Window
             ShowPopup();
             handled = true;
         }
+        else if (msg == WM_NCCALCSIZE && wParam.ToInt64() == 1)
+        {
+            // 无边框窗口保留 WS_THICKFRAME（拖边缩放 + DWM 阴影）时，系统会在顶部画一条残边；
+            // 让客户区覆盖整窗即可去掉（标准 borderless 手法，缩放与阴影不受影响）
+            handled = true;
+            return IntPtr.Zero;
+        }
 
         return IntPtr.Zero;
     }
@@ -932,10 +961,88 @@ internal sealed class MainWindow : Window
         _usage.Changed -= OnUsageChanged;
     }
 
+    /// <summary>键帽样式的快捷键标签：小圆角边框 + 小字号，比纯文本提示更精致。</summary>
+    private static Border MakeKeycap(string label) => new()
+    {
+        CornerRadius = new CornerRadius(4),
+        BorderBrush = Frozen(0xC8, 0xC3, 0xE8),
+        BorderThickness = new Thickness(1),
+        Background = Frozen(0xEF, 0xED, 0xF9),
+        Padding = new Thickness(5, 1.5, 5, 1.5),
+        VerticalAlignment = VerticalAlignment.Center,
+        Child = new TextBlock
+        {
+            Text = label,
+            FontSize = 10,
+            FontFamily = new FontFamily("Segoe UI"),
+            Foreground = Frozen(0x50, 0x4E, 0x68),
+        },
+    };
+
     private static SolidColorBrush Frozen(byte r, byte g, byte b)
     {
         var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
-        brush.Freeze(); // 静态画笔冻结，跨线程读取安全
+        brush.Freeze(); // 静态画刷冻结，跨线程读取安全
         return brush;
+    }
+
+    /// <summary>
+    /// 预览专用 TextBlock：把拉丁区组合符（U+0300–036F、U+0483–0489）拆进独立 Run 并显式指定 Arial。
+    /// WPF 会把"基字+组合符"整簇锁死在基字的字体上，组合符永远不参与回退（FontProbe 实测：
+    /// 字体链/Arial 优先/GlobalUserInterface/自定义 CompositeFont 全部豆腐块，唯一可行是手动按字符拆 Run）。
+    /// 这些码点 YaHei/Segoe UI/Symbol 都没有，而 Arial 全覆盖（font-coverage.ps1 枚举 416 个字体验证）。
+    /// 藏文/泰文等组合符不动——它们与基字同文字系统，整簇落在链中相应字体内，本就正常。
+    /// </summary>
+    private sealed class PreviewTextBlock : TextBlock
+    {
+        private static readonly FontFamily MarkFont = new("Arial");
+        private static readonly FontFamily BaseFont = new(PreviewFontChain);
+        private bool _building;
+
+        public PreviewTextBlock()
+        {
+            // TextBlock.OnPropertyChanged 是密封的，只能用描述符监听 Text 变化
+            System.ComponentModel.DependencyPropertyDescriptor
+                .FromProperty(TextProperty, typeof(TextBlock))
+                .AddValueChanged(this, OnTextChanged);
+        }
+
+        private void OnTextChanged(object? sender, EventArgs e)
+        {
+            if (!_building && !string.IsNullOrEmpty(Text))
+                BuildRuns();
+        }
+
+        private void BuildRuns()
+        {
+            _building = true;
+            try
+            {
+                Inlines.Clear();
+                var buffer = new System.Text.StringBuilder();
+                bool current = false; // 当前缓冲段是否为组合符段
+                void Flush()
+                {
+                    if (buffer.Length == 0) return;
+                    Inlines.Add(new System.Windows.Documents.Run(buffer.ToString())
+                    {
+                        FontFamily = current ? MarkFont : BaseFont,
+                    });
+                    buffer.Clear();
+                }
+                foreach (var ch in Text)
+                {
+                    bool mark = (ch >= '\u0300' && ch <= '\u036F') || (ch >= '\u0483' && ch <= '\u0489');
+                    if (mark != current)
+                    {
+                        Flush();
+                        current = mark;
+                    }
+                    buffer.Append(ch);
+                }
+                Flush();
+            }
+            finally { _building = false; }
+        }
     }
 }
