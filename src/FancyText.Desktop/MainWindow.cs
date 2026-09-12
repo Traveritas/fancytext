@@ -59,6 +59,7 @@ internal sealed class MainWindow : Window
     private readonly DispatcherTimer _debounce;
 
     private readonly TextBox _inputBox = new();
+    private Border _inputBoxBorder = new();
     private readonly ListBox _listBox = new();
     private readonly TextBlock _statusCount = new();
     private List<StyleListItem> _currentItems = [];
@@ -161,14 +162,37 @@ internal sealed class MainWindow : Window
         header.Children.Add(title);
         header.MouseLeftButtonDown += OnHeaderDrag;
 
-        // 顶部：输入框（圆角模板 + 花式字符回退链——用户可能直接粘贴已装饰文本）
+        // 顶部：输入框。做法：默认 TextBox（IME/编辑器链路保持原生完整——自定义模板曾导致无法输入）
+        // 外包一层圆角 Border 拿回观感；聚焦变色走事件，不碰模板。
         _inputBox.FontSize = 18;
-        _inputBox.Padding = new Thickness(12, 9, 12, 9);
-        _inputBox.Margin = new Thickness(14, 8, 14, 6);
+        _inputBox.Padding = new Thickness(11, 9, 11, 9);
         _inputBox.VerticalContentAlignment = VerticalAlignment.Center;
         _inputBox.FontFamily = new FontFamily(PreviewFontChain);
-        _inputBox.Style = CreateRoundedInputStyle();
+        _inputBox.BorderThickness = new Thickness(0);
+        _inputBox.Background = Brushes.Transparent;
+        _inputBox.CaretBrush = PrimaryBrush;
         _inputBox.TextChanged += (_, _) => { _debounce.Stop(); _debounce.Start(); }; // 每次击键重置 150ms 防抖
+
+        _inputBoxBorder = new Border
+        {
+            CornerRadius = new CornerRadius(9),
+            BorderThickness = new Thickness(1),
+            BorderBrush = WindowBorderBrush,
+            Background = Frozen(0xF1, 0xF0, 0xF8),
+            Padding = new Thickness(2),
+            Margin = new Thickness(14, 8, 14, 6),
+            Child = _inputBox,
+        };
+        _inputBox.GotKeyboardFocus += (_, _) =>
+        {
+            _inputBoxBorder.BorderBrush = PrimaryBrush;
+            _inputBoxBorder.Background = Brushes.White;
+        };
+        _inputBox.LostKeyboardFocus += (_, _) =>
+        {
+            _inputBoxBorder.BorderBrush = WindowBorderBrush;
+            _inputBoxBorder.Background = Frozen(0xF1, 0xF0, 0xF8);
+        };
 
         // 分类筛选：全部 / 收藏 / 最近 / 六个分类，胶囊形单选组
         var filterPanel = new WrapPanel { Margin = new Thickness(12, 0, 12, 4) };
@@ -234,11 +258,11 @@ internal sealed class MainWindow : Window
         var card = new DockPanel { Background = Background };
         card.Resources.Add(typeof(ScrollBar), CreateThinScrollBarStyle()); // 细滚动条全局生效
         DockPanel.SetDock(header, Dock.Top);
-        DockPanel.SetDock(_inputBox, Dock.Top);
+        DockPanel.SetDock(_inputBoxBorder, Dock.Top);
         DockPanel.SetDock(filterPanel, Dock.Top);
         DockPanel.SetDock(status, Dock.Bottom);
         card.Children.Add(header);
-        card.Children.Add(_inputBox);
+        card.Children.Add(_inputBoxBorder);
         card.Children.Add(filterPanel);
         card.Children.Add(status);
         card.Children.Add(_listBox); // 列表占满余下空间
@@ -258,39 +282,6 @@ internal sealed class MainWindow : Window
             {
             }
         }
-    }
-
-    /// <summary>圆角输入框模板：聚焦时主色描边。PART_ContentHost 名字必须保留（TextBox 契约）。</summary>
-    private static Style CreateRoundedInputStyle()
-    {
-        var style = new Style(typeof(TextBox));
-        style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0)));
-        style.Setters.Add(new Setter(Control.BackgroundProperty, Frozen(0xF1, 0xF0, 0xF8)));
-        style.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
-        style.Setters.Add(new Setter(System.Windows.Controls.Primitives.TextBoxBase.CaretBrushProperty, PrimaryBrush));
-
-        var border = new FrameworkElementFactory(typeof(Border));
-        border.Name = "InputBorder";
-        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(9));
-        border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
-        border.SetValue(Border.BorderBrushProperty, WindowBorderBrush);
-        border.SetValue(Border.BackgroundProperty, Frozen(0xF1, 0xF0, 0xF8));
-        border.SetValue(Border.PaddingProperty, new Thickness(2));
-        var host = new FrameworkElementFactory(typeof(ScrollViewer));
-        host.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Hidden);
-        host.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Auto);
-        var contentHost = new FrameworkElementFactory(typeof(Border));
-        contentHost.Name = "PART_ContentHost";
-        host.AppendChild(contentHost);
-        border.AppendChild(host);
-
-        var template = new ControlTemplate(typeof(TextBox)) { VisualTree = border };
-        var focused = new Trigger { Property = UIElement.IsKeyboardFocusWithinProperty, Value = true };
-        focused.Setters.Add(new Setter(Border.BorderBrushProperty, PrimaryBrush, "InputBorder"));
-        focused.Setters.Add(new Setter(Border.BackgroundProperty, Brushes.White, "InputBorder"));
-        template.Triggers.Add(focused);
-        style.Setters.Add(new Setter(Control.TemplateProperty, template));
-        return style;
     }
 
     /// <summary>细滚动条隐式样式：8px 圆角拇指、无箭头（默认 ScrollBar 过粗，与轻量风格不符）。
