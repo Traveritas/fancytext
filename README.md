@@ -32,21 +32,26 @@
 - **引擎**：预览只转换有界文本（前 64 字素）、输入防抖、列表项持久复用——开销与"刷新次数 × 文本长度"解耦；
 - **依赖**：桌面版/CLI 零 NuGet 包；扩展仅 CmdPal SDK + WindowsAppSDK 必需项；
 - **渲染**：桌面版圆角/阴影走 Win11 DWM 系统特性（零额外缓冲），曾实测 `AllowsTransparency + DropShadowEffect` 位图特效会把工作集从 ~145MB 推到 ~190MB，已弃用；
-- 当前实测水位（供回归对照）：桌面版常驻 ~117MB / 唤出渲染后 ~146MB（WPF + WinForms 托盘 + 十余文字系统字体渲染的固有成本）；下一个已知优化点是 **Win32 Shell_NotifyIcon 替换 WinForms 托盘**（预计省 8–15MB）；
+- 当前实测水位（供回归对照）：桌面版常驻 **~12MB**（隐藏后 EmptyWorkingSet 修剪，唤出瞬时 ~150MB 用后回落）、唤出渲染 ~68MB；命令行工具单文件 270KB；扩展进程约 56MB；
 - 命令行工具单文件 270KB；扩展进程约 56MB。
 
 ## 独立桌面版（产品线 #2，无需 PowerToys）
 
-WPF 弹窗式转换器：托盘常驻 + 全局热键，**与插件共享同一引擎和收藏**（`%LOCALAPPDATA%\FancyText\state.json`）。
+WPF 弹窗式转换器：托盘常驻 + 全局热键，**与插件共享同一引擎和收藏**（`%LOCALAPPDATA%\FancyText\state.json`）。免安装绿色软件，单文件 exe（自包含，无需 .NET 运行时）。
+
+**下载**：GitHub Releases 的 `FancyText.Desktop-x.x.x-win-x64.zip`（解压即用），或自行构建：
 
 ```bash
-# 构建/单文件发布（产物约 270KB，需 .NET 8 运行时；改 --self-contained true 可免装运行时）
-dotnet publish src/FancyText.Desktop -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true
+dotnet publish src/FancyText.Desktop -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+# 或 tools/package.ps1 一键打包 zip
 ```
 
-- **唤出**：全局热键 `Ctrl+Alt+F`（改热键：编辑 `%LOCALAPPDATA%\FancyText\desktop.json`，格式 `{"hotkey":"Ctrl+Alt+Shift+G"}`）、托盘双击、或再次运行 exe；单实例。
-- **弹窗**：自动预填剪贴板（无则示例文字），输入实时预览（150ms 防抖，预览只转换前 64 字素）；窗口出现在鼠标附近，点击别处自动隐藏。
+- **唤出**：全局热键 `Ctrl+Alt+F`（设置页可视化换绑，占用自动回退旧键）、托盘双击、或再次运行 exe；单实例。
+- **弹窗**：自动预填剪贴板（可关，无则示例文字），输入实时预览（150ms 防抖，预览只转换前 64 字素）；窗口出现在鼠标附近（可改主屏居中），点击别处自动隐藏。
 - **操作**：`Enter` 复制选中样式的**全文**转换并隐藏；`Esc` 隐藏；`Ctrl+D` 收藏（⭐，插件同步可见）；`Ctrl+R` 随机换一个；`↑↓` 浏览；分类筛选含全部/收藏/最近/六大类。
+- **设置**（托盘右键 → 设置，全部即时生效）：主题（浅色/深色/跟随系统）、强调色色板+自定义、预览字号、唤出快捷键录制、开机自启动、唤出时预填剪贴板、复制后收起、弹窗位置。
+- **渲染**：花式字符横跨十余文字系统，内置 GDI 动态字体覆盖库（FontCoverage）——组合符按码点实时解析到覆盖它的系统字体，任意机器免配置不出现豆腐块；深浅主题全控件适配。
+- **轻量**：隐藏 1.5s 后自动修剪工作集，任务管理器常驻观感 ~12MB。
 
 ## 命令行工具（开发/脚本用途）
 
@@ -68,7 +73,7 @@ src/FancyText.Core/        转换引擎（无 UI 依赖，CLI 与插件共用）
   ZalgoTransformer.cs      魔鬼文字（上/中/下三组组合符随机叠加，强度可调，可反向清洗）
   LatinMaps.cs             拉丁映射表（数学字母区段+洞字符、带圈/方块、全角、上下标、倒转/镜像、盲文…）
   MartianDictionary.cs     火星文字典加载（嵌入资源，Rune 对齐）
-  StyleCatalog.cs(.Expanded)  全部 124 个样式定义
+  StyleCatalog.cs(.Expanded)  全部 126 个样式定义
   Resources/spark-simple.json  cnchar 火星文字典（MIT）
 src/FancyText.CmdPal/      Command Palette 扩展（WinUI3 / MSIX）
   Program.cs               COM 服务器入口
@@ -82,7 +87,7 @@ src/FancyText.CmdPal/      Command Palette 扩展（WinUI3 / MSIX）
   Helpers/UsageState.cs          收藏与最近使用（%LOCALAPPDATA%\FancyText\state.json）
 src/FancyText.Cli/         命令行工具 fancy（--list/--json/--random/单样式）
 src/FancyText.Desktop/     独立桌面版（WPF：全局热键 + 托盘 + 弹窗转换器，与插件共享收藏）
-tests/FancyText.Core.Tests/  自检测试（117 项断言）+ `-- demo`（效果预览）+ `-- bench`（性能基准）
+tests/FancyText.Core.Tests/  自检测试（128 项断言）+ `-- demo`（效果预览）+ `-- bench`（性能基准）
 reference/                 参考项目（ChangeCaseExtension、cnchar 克隆，仅研读，不参与构建）
 docs/                      调研报告、独立工具探索
 ```
@@ -109,7 +114,7 @@ docs/                      调研报告、独立工具探索
 - Windows 10 19041+（实际建议 Win11 + PowerToys ≥ 0.90）
 
 ```bash
-# 运行引擎测试（117 项断言）
+# 运行引擎测试（128 项断言）
 dotnet run --project tests/FancyText.Core.Tests
 
 # 效果预览（不进 UI，直接打印全部样式的转换结果）
