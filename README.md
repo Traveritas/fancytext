@@ -1,6 +1,6 @@
 # 花式文字 for PowerToys Command Palette
 
-把剪贴板或输入的文字一键转换为 **菊花体、魔鬼文字（Zalgo）、花藤体、花体 𝓕𝓪𝓷𝓬𝔂、火星文** 等 **126 种**花式 Unicode 样式，回车即复制。另附同引擎的命令行工具 `fancy`。
+把剪贴板或输入的文字一键转换为 **菊花体、魔鬼文字（Zalgo）、花藤体、花体 𝓕𝓪𝓷𝓬𝔂、火星文** 等 **126 种**内置花式 Unicode 样式，回车即复制；支持**导入样式包**无限扩充。另附同引擎的命令行工具 `fancy`。
 
 调研结论（同类插件不存在、全部样式来源与码点依据）见 [docs/01-调研报告-花式文字插件.md](docs/01-调研报告-花式文字插件.md)；独立工具形态分析见 [docs/02-独立工具探索.md](docs/02-独立工具探索.md)。
 
@@ -13,6 +13,18 @@
 - **实时预览**：二级页每个样式一行，标题即转换结果；详情页显示完整结果、实现机制（码点）与原文。
 - **回车复制**，Toast 反馈；右键有「复制并保持打开」「收藏」等命令。
 - **还原功能**：「变换」分类内置「还原（去装饰）」，可把被组合符装饰过的文字清洗回原文；「中文」分类有「火星文还原」。
+- **样式包**：别人整理好的样式合集（`.json`）一键导入（见下节），收藏也能导出成包分享。
+
+## 样式包：导入与分享
+
+样式在本引擎里是**纯数据**（声明式步骤管道，不含可执行代码），一组样式可以存成一个 `.json` 包文件互相分享：
+
+- **导入**：桌面版 设置 →「样式包」→ 导入样式包…；或把 `.json` 直接丢进 `%LOCALAPPDATA%\FancyText\styles\`（一文件一包，放下即生效）；命令行 `fancy --import 包.json`。
+- **导出**：桌面版设置页「导出收藏为包…」把收藏夹生成包文件；命令行 `fancy --export <样式ID…> --out 包.json`。
+- **管理**：设置页列出已装包（可卸载，损坏的包会标红且不拖累其它包）；`fancy --packs` / `fancy --remove 包名`。
+- 桌面版导入/卸载即时生效；命令面板插件在面板进程重启后生效。列表中包样式的分类后会标注来源包名。
+- **安全校验**：ID 冲突（内置/其它包）拒绝导入；孤立代理对、控制字符、超限参数（映射条数/步骤数/文件大小 2MB）一律拦截。
+- 包格式与全部步骤写法（mapReplace / useMap / appendMark / wrapString / wrapEach / spacing / reverse / algorithm / ifChanged 守卫）见可直接导入体验的 [docs/sample-pack.json](docs/sample-pack.json)。
 
 ### 样式分类（126 个）
 
@@ -63,6 +75,10 @@ fancy --list                # 样式 ID 清单
 fancy bold-script "Hi"      # 单样式，只输出结果（可管道）
 fancy --random "你好"       # 随机样式
 fancy --json "你好"         # JSON 输出（供其它程序消费）
+fancy --import 包.json      # 导入样式包
+fancy --packs               # 列出已安装的样式包
+fancy --export bold morse --out 我的包.json   # 导出样式为可分享的包
+fancy --remove 包名         # 卸载样式包
 ```
 
 ## 项目结构
@@ -73,7 +89,14 @@ src/FancyText.Core/        转换引擎（无 UI 依赖，CLI 与插件共用）
   ZalgoTransformer.cs      魔鬼文字（上/中/下三组组合符随机叠加，强度可调，可反向清洗）
   LatinMaps.cs             拉丁映射表（数学字母区段+洞字符、带圈/方块、全角、上下标、倒转/镜像、盲文…）
   MartianDictionary.cs     火星文字典加载（嵌入资源，Rune 对齐）
-  StyleCatalog.cs(.Expanded)  全部 126 个样式定义
+  StyleCatalog.cs(.Expanded)  全部 126 个内置样式（声明式 StyleDefinition 定义）
+  StyleDefinition.cs       样式定义 DTO + StyleFactory（定义 → 可执行 TextStyle，含来源标记）
+  TransformStep.cs         声明式步骤层次（查表/引用内置表/附加组合符/包围/分隔/倒序/算法/守卫）
+  StyleInterpreter.cs      步骤管道 → 委托（构建期一次编译，运行时纯委托链）
+  StylePack.cs             样式包模型、校验、导入/导出/扫描/卸载（一文件一包，安全上限）
+  StylePackJson.cs         包 JSON 的 op 判别转换器 + 分类/算法 kebab 命名
+  KnownTransforms.cs       内置命名映射表与算法注册表（UseMap / Algorithm 的引用目标）
+  EncodingTransforms.cs    NATO / A1Z26 / 二进制 / 十六进制 / 交替大小写
   Resources/spark-simple.json  cnchar 火星文字典（MIT）
 src/FancyText.CmdPal/      Command Palette 扩展（WinUI3 / MSIX）
   Program.cs               COM 服务器入口
@@ -87,7 +110,7 @@ src/FancyText.CmdPal/      Command Palette 扩展（WinUI3 / MSIX）
   Helpers/UsageState.cs          收藏与最近使用（%LOCALAPPDATA%\FancyText\state.json）
 src/FancyText.Cli/         命令行工具 fancy（--list/--json/--random/单样式）
 src/FancyText.Desktop/     独立桌面版（WPF：全局热键 + 托盘 + 弹窗转换器，与插件共享收藏）
-tests/FancyText.Core.Tests/  自检测试（128 项断言）+ `-- demo`（效果预览）+ `-- bench`（性能基准）
+tests/FancyText.Core.Tests/  自检测试（169 项断言）+ `-- demo`（效果预览）+ `-- bench`（性能基准）
 reference/                 参考项目（ChangeCaseExtension、cnchar 克隆，仅研读，不参与构建）
 docs/                      调研报告、独立工具探索
 ```
@@ -114,7 +137,7 @@ docs/                      调研报告、独立工具探索
 - Windows 10 19041+（实际建议 Win11 + PowerToys ≥ 0.90）
 
 ```bash
-# 运行引擎测试（128 项断言）
+# 运行引擎测试（169 项断言，含样式包解析/校验/导入全链路）
 dotnet run --project tests/FancyText.Core.Tests
 
 # 效果预览（不进 UI，直接打印全部样式的转换结果）
@@ -150,6 +173,7 @@ Export-PfxCertificate -Cert $cert -FilePath src\FancyText.CmdPal\FancyText.DevKe
 
 - 魔鬼文字是随机的，复制形态与预览不完全一致（计划加「换一批」右键命令）；
 - 设置页（纯示例模式 / 预览字数 / 分类显隐）与简繁转换排期中；
+- 样式包为纯数据格式，无官方包仓库/在线目录（当前靠文件分享；官方扩展包、网页版包编辑器排期中）；
 - 组合符渲染因平台/字体而异（手机与游戏内最佳，PC 部分字体显示方块）——详情页已标注码点；
 - 火星文为字典逐字替换，不含语气词与符号装饰的完整「火星文风格」；
 - 独立网页版（单文件 HTML）见 docs/02 的路线建议。

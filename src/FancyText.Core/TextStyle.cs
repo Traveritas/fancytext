@@ -53,5 +53,11 @@ public sealed record TextStyle
     /// <summary>机制说明（码点/来源），显示在详情页。</summary>
     public string? Note { get; init; }
 
+    /// <summary>本样式的声明式定义（可序列化）。由 <see cref="StyleFactory.FromDefinition"/> 填充；Legacy 迁移副本为 null。</summary>
+    public StyleDefinition? Definition { get; init; }
+
+    /// <summary>来源：内置或外部样式包。由 <see cref="StyleFactory.FromDefinition"/> 填充；null 视为内置。</summary>
+    public StyleSource? Source { get; init; }
+
     public string CategoryDisplayName => Category.DisplayName();
 }

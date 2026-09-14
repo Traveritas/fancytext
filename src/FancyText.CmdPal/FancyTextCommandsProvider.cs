@@ -33,7 +33,7 @@ public sealed partial class FancyTextCommandsProvider : CommandProvider
             new CommandItem(_home)
             {
                 Title = "花式文字转换",
-                Subtitle = "菊花体 / 魔鬼文字 / 花藤体 / 花体 / 火星文 … 按分类浏览 87 个样式",
+                Subtitle = $"菊花体 / 魔鬼文字 / 花藤体 / 花体 / 火星文 … 按分类浏览 {StyleCatalog.All.Count} 个样式",
                 Icon = new IconInfo("\uE8C8"),
             },
         ];
@@ -47,7 +47,7 @@ public sealed partial class FancyTextCommandsProvider : CommandProvider
         [
             new FallbackCommandItem(new OpenHomePageCommand(), "花式文字转换")
             {
-                Subtitle = "回车进入，转换这段文字为菊花体、魔鬼文字、花体等 87 个样式",
+                Subtitle = $"回车进入，转换这段文字为菊花体、魔鬼文字、花体等 {StyleCatalog.All.Count} 个样式",
                 Icon = new IconInfo("\uE8C8"),
                 FallbackHandler = new RootQueryHandler(_shared),
             },

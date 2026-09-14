@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "name": "官方示例包",
+  "author": "FancyText",
+  "description": "演示样式包格式：每个样式对应一类步骤（op）写法，可直接导入体验。分享时把这个文件发给对方即可。",
+  "styles": [
+    {
+      "id": "demo-caesar1",
+      "name": "示例 · 凯撒+1",
+      "category": "encoding",
+      "note": "内联映射表（mapReplace）：a→b、b→c……自己造的替换规则都这么写",
+      "steps": [
+        { "op": "mapReplace", "map": { "a": "b", "b": "c", "c": "d", "A": "B", "B": "C" } }
+      ]
+    },
+    {
+      "id": "demo-bold-star",
+      "name": "示例 · 粗体星光",
+      "category": "decoration",
+      "note": "引用内置表（useMap: bold）+ 整串包围（wrapString），步骤按序组合成管道",
+      "steps": [
+        { "op": "useMap", "map": "bold" },
+        { "op": "wrapString", "prefix": "✧･ﾟ", "suffix": "ﾟ･✧" }
+      ]
+    },
+    {
+      "id": "demo-sparkle-each",
+      "name": "示例 · 逐字星光",
+      "category": "decoration",
+      "note": "逐字包围（wrapEach）：每个字前面加 ✧",
+      "steps": [
+        { "op": "wrapEach", "prefix": "✧", "suffix": "" }
+      ]
+    },
+    {
+      "id": "demo-fire-above",
+      "name": "示例 · 顶火字",
+      "category": "cjk-effect",
+      "note": "附加组合符（appendMark）：每字后叠 U+0307 上加点 ×2，中英通吃",
+      "steps": [
+        { "op": "appendMark", "mark": "\u0307", "repeat": 2 }
+      ]
+    },
+    {
+      "id": "demo-dotted-space",
+      "name": "示例 · 点距字",
+      "category": "decoration",
+      "note": "字素间分隔（spacing）",
+      "steps": [
+        { "op": "spacing", "separator": "·" }
+      ]
+    },
+    {
+      "id": "demo-leet-gapped",
+      "name": "示例 · Leet 宽距",
+      "category": "transform",
+      "note": "守卫（ifChanged）示例：先做 Leet 替换，若输入无字母可换（零命中）则原样返回视为不适用，否则加空格",
+      "steps": [
+        { "op": "useMap", "map": "leet" },
+        { "op": "ifChanged", "inner": { "op": "spacing", "separator": " " } }
+      ]
+    },
+    {
+      "id": "demo-morse-mirror",
+      "name": "示例 · 倒序摩斯",
+      "category": "encoding",
+      "note": "内置算法（algorithm: morse）+ 倒序（reverse）的组合",
+      "steps": [
+        { "op": "algorithm", "name": "morse" },
+        { "op": "reverse" }
+      ]
+    }
+  ]
+}

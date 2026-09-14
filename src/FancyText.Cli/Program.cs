@@ -14,12 +14,67 @@ namespace FancyText.Cli;
 ///   fancy --random [文本]     随机挑一个样式
 ///   fancy --json [文本]       以 JSON 输出全部转换结果
 ///   fancy --demo              同 <文本>，别名
+///   fancy --import <包.json>  导入样式包（含内置样式 + 已装包的合并目录）
+///   fancy --packs             列出已安装的样式包
+///   fancy --export <ID...> [--out <包.json>]  把若干样式（如收藏）导出为可分享的包
 /// </summary>
 public static class Program
 {
     public static int Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
+
+        // —— 样式包子命令（消费参数并直接返回，不影响旧用法） ——
+        for (var i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--import":
+                    if (i + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("--import 需要包文件路径");
+                        return 2;
+                    }
+
+                    return ImportPack(args[++i]);
+
+                case "--packs":
+                    return ListPacks();
+
+                case "--remove":
+                    if (i + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("--remove 需要包名（用 --packs 查看）");
+                        return 2;
+                    }
+
+                    return RemovePack(args[++i]);
+
+                case "--export":
+                    var ids = new List<string>();
+                    string? outFile = null;
+                    for (var j = i + 1; j < args.Length; j++)
+                    {
+                        if (args[j] == "--out")
+                        {
+                            if (j + 1 >= args.Length)
+                            {
+                                Console.Error.WriteLine("--out 需要输出文件路径");
+                                return 2;
+                            }
+
+                            outFile = args[++j];
+                        }
+                        else if (!args[j].StartsWith("--", StringComparison.Ordinal))
+                        {
+                            ids.Add(args[j]);
+                        }
+                    }
+
+                    return ExportStyles(ids, outFile);
+            }
+        }
+
         var rest = args.Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToList();
 
         if (args.Contains("--list"))
@@ -129,5 +184,120 @@ public static class Program
     {
         var single = text.ReplaceLineEndings(" ");
         return single.Length <= 80 ? single : single[..80] + "…";
+    }
+
+    // ================================================== 样式包 ==================================================
+
+    private static int ImportPack(string path)
+    {
+        var result = StylePacks.Import(path);
+        if (!result.Success)
+        {
+            Console.Error.WriteLine("导入失败：");
+            foreach (var error in result.Errors)
+            {
+                Console.Error.WriteLine($"  {error}");
+            }
+
+            return 1;
+        }
+
+        Console.WriteLine($"已导入 ✓（{result.InstalledPath}）");
+        Console.WriteLine("桌面版即时生效；命令面板插件重启后生效。");
+        return 0;
+    }
+
+    private static int ListPacks()
+    {
+        var packs = StylePacks.LoadInstalled();
+        if (packs.Count == 0)
+        {
+            Console.WriteLine($"尚未安装样式包（把 .json 放进 {StylePacks.DefaultPacksDirectory} 即可）");
+            return 0;
+        }
+
+        foreach (var pack in packs)
+        {
+            if (pack.Error is null)
+            {
+                Console.WriteLine($"  {pack.PackName,-20} {pack.Styles.Count} 个样式  {pack.FilePath}");
+                foreach (var style in pack.Styles)
+                {
+                    Console.WriteLine($"    {style.Id,-22} {style.Name}");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"  {Path.GetFileName(pack.FilePath),-20} 损坏：{pack.Error}");
+            }
+        }
+
+        return 0;
+    }
+
+    private static int RemovePack(string packName)
+    {
+        if (!StylePacks.Remove(packName))
+        {
+            Console.Error.WriteLine($"没有找到包：{packName}（用 --packs 查看已安装的包名）");
+            return 1;
+        }
+
+        Console.WriteLine($"已卸载 {packName} ✓");
+        return 0;
+    }
+
+    private static int ExportStyles(List<string> ids, string? outFile)
+    {
+        if (ids.Count == 0)
+        {
+            Console.Error.WriteLine("--export 至少需要一个样式 ID（用 --list 查看全部；收藏样式同样可导出）");
+            return 2;
+        }
+
+        var byId = StyleCatalog.All.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+        var styles = new List<TextStyle>();
+        var missing = new List<string>();
+        foreach (var id in ids)
+        {
+            if (byId.TryGetValue(id, out var style))
+            {
+                styles.Add(style);
+            }
+            else
+            {
+                missing.Add(id);
+            }
+        }
+
+        if (missing.Count > 0)
+        {
+            Console.Error.WriteLine($"未知样式 ID：{string.Join("、", missing)}（用 --list 查看全部）");
+            return 2;
+        }
+
+        var packName = outFile is null
+            ? "导出包"
+            : Path.GetFileNameWithoutExtension(outFile);
+        var json = StylePacks.Serialize(StylePacks.ExportStyles(styles, packName));
+        if (outFile is null)
+        {
+            Console.OutputEncoding = Encoding.UTF8;
+            Console.WriteLine(json);
+            return 0;
+        }
+
+        try
+        {
+            File.WriteAllText(outFile, json);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"写入失败：{ex.Message}");
+            return 1;
+        }
+
+        Console.WriteLine($"已导出 {styles.Count} 个样式 → {outFile}");
+        return 0;
     }
 }

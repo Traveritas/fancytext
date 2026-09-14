@@ -46,7 +46,8 @@ internal sealed class MainWindow : Window
         "Microsoft YaHei UI, Segoe UI, Segoe UI Symbol, Segoe UI Historic, " +
         "Nirmala UI, Ebrima, Microsoft Himalaya, Leelawadee UI, Lao UI, Sylfaen";
 
-    private static readonly Dictionary<string, TextStyle> StylesById =
+    /// <summary>样式 ID 索引（内置 + 已安装包），样式包增删后由 <see cref="RefreshStyles"/> 重建。</summary>
+    private Dictionary<string, TextStyle> _stylesById =
         StyleCatalog.All.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
 
     private readonly UsageState _usage;
@@ -826,7 +827,9 @@ internal sealed class MainWindow : Window
                 Name = style.Name,
                 PreviewText = OneLine(preview),
                 IsPinned = _usage.IsPinned(style.Id),
-                CategoryName = style.Category.DisplayName(),
+                CategoryName = style.Source is StyleSource.Pack { PackName: var pack }
+                    ? $"{style.Category.DisplayName()} · {pack}"
+                    : style.Category.DisplayName(),
             });
         }
 
@@ -866,16 +869,26 @@ internal sealed class MainWindow : Window
     }
 
     /// <summary>按 ID 列表取回样式（收藏/最近里存的是 ID，样式目录增删后可能失配）。</summary>
-    private static IEnumerable<TextStyle> StylesByIds(IEnumerable<string> ids)
+    private IEnumerable<TextStyle> StylesByIds(IEnumerable<string> ids)
     {
         foreach (var id in ids)
         {
-            if (StylesById.TryGetValue(id, out var style))
+            if (_stylesById.TryGetValue(id, out var style))
             {
                 yield return style;
             }
         }
     }
+
+    /// <summary>样式包导入/卸载后：重建 ID 索引与列表（由设置页调用；插件版需重启其进程）。</summary>
+    internal void RefreshStyles()
+    {
+        _stylesById = StyleCatalog.All.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+        RebuildList();
+    }
+
+    /// <summary>收藏的样式（导出样式包用），保持收藏时间序。</summary>
+    internal IReadOnlyList<TextStyle> PinnedStyles => StylesByIds(_usage.Pinned).ToList();
 
     /// <summary>预览单行化并限长，防 Zalgo 之类撑爆测量。</summary>
     private static string OneLine(string text)
@@ -926,7 +939,7 @@ internal sealed class MainWindow : Window
     /// <summary>回车/双击：对全文做完整转换写入剪贴板 → 记录最近使用 → 隐藏。</summary>
     private bool CommitSelected()
     {
-        if (_listBox.SelectedItem is not StyleListItem selected || !StylesById.TryGetValue(selected.StyleId, out var style))
+        if (_listBox.SelectedItem is not StyleListItem selected || !_stylesById.TryGetValue(selected.StyleId, out var style))
         {
             return false;
         }

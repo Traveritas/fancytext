@@ -35,6 +35,8 @@ internal sealed class SettingsWindow : Window
     private bool _recordingHotkey;
     private TextBlock _hotkeyHint = new();
     private Button _hotkeyPill = new();
+    private TextBlock _packStatus = new();
+    private StackPanel _packsList = new();
 
     public SettingsWindow(MainWindow main)
     {
@@ -82,6 +84,12 @@ internal sealed class SettingsWindow : Window
         root.Children.Add(MakeRow("唤出时预填剪贴板文字", MakeToggle(nameof(_settings.PrefillClipboard), _settings.PrefillClipboard, v => Save(_settings with { PrefillClipboard = v }))));
         root.Children.Add(MakeRow("复制后收起窗口", MakeToggle(nameof(_settings.HideAfterCopy), _settings.HideAfterCopy, v => Save(_settings with { HideAfterCopy = v }))));
         root.Children.Add(MakeRow("弹窗位置", MakePositionCombo()));
+
+        root.Children.Add(MakeSeparator());
+
+        // —— 样式包 ——
+        root.Children.Add(MakeGroupHeader("样式包"));
+        root.Children.Add(MakeStylePacksPanel());
 
         root.Children.Add(MakeSeparator());
 
@@ -388,6 +396,196 @@ internal sealed class SettingsWindow : Window
         var host = new StackPanel();
         host.Children.Add(row);
         return host;
+    }
+
+    /// <summary>
+    /// 样式包区块：导入（.json 包文件 → %LOCALAPPDATA%\FancyText\styles）、导出收藏为包、
+    /// 已安装包列表（含卸载）。导入/卸载后即时刷新主窗口列表；命令面板插件需重启其进程后生效。
+    /// </summary>
+    private StackPanel MakeStylePacksPanel()
+    {
+        var importBtn = new Button
+        {
+            Content = "导入样式包…",
+            FontSize = 12,
+            Padding = new Thickness(10, 3, 10, 3),
+            Cursor = Cursors.Hand,
+        };
+        StyleButton(importBtn);
+        importBtn.Click += (_, _) => OnImportPack();
+
+        var exportBtn = new Button
+        {
+            Content = "导出收藏为包…",
+            FontSize = 12,
+            Padding = new Thickness(10, 3, 10, 3),
+            Margin = new Thickness(8, 0, 0, 0),
+            Cursor = Cursors.Hand,
+        };
+        StyleButton(exportBtn);
+        exportBtn.Click += (_, _) => OnExportPinnedPack();
+
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+
+        _packStatus = new TextBlock
+        {
+            Text = "",
+            FontSize = 10.5,
+            Foreground = _theme.Meta,
+            Margin = new Thickness(0, 6, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+
+        _packsList = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+        FillInstalledPacks();
+
+        var panel = new StackPanel();
+        buttons.Children.Add(importBtn);
+        buttons.Children.Add(exportBtn);
+        panel.Children.Add(buttons);
+        panel.Children.Add(_packStatus);
+        panel.Children.Add(_packsList);
+        return panel;
+    }
+
+    private void FillInstalledPacks()
+    {
+        _packsList.Children.Clear();
+        IReadOnlyList<FancyText.Core.InstalledPack> packs;
+        try
+        {
+            packs = FancyText.Core.StylePacks.LoadInstalled();
+        }
+        catch (Exception)
+        {
+            return; // 目录不可读等：列表留空，导入按钮的错误提示兜底
+        }
+
+        if (packs.Count == 0)
+        {
+            _packsList.Children.Add(new TextBlock
+            {
+                Text = $"尚未安装样式包——把别人分享的 .json 放进 {FancyText.Core.StylePacks.DefaultPacksDirectory} 也行",
+                FontSize = 10.5,
+                Foreground = _theme.Meta,
+                Opacity = 0.8,
+                TextWrapping = TextWrapping.Wrap,
+            });
+            return;
+        }
+
+        foreach (var pack in packs)
+        {
+            var label = pack.Error is null
+                ? $"{pack.PackName}（{pack.Styles.Count} 个样式）"
+                : $"{Path.GetFileName(pack.FilePath)}（损坏：{pack.Error}）";
+            var text = new TextBlock
+            {
+                Text = label,
+                FontSize = 11.5,
+                Foreground = pack.Error is null ? _theme.Text : Frozen(0xD1, 0x3B, 0x3B),
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+            DockPanel.SetDock(text, Dock.Left);
+
+            var removeBtn = new Button
+            {
+                Content = "卸载",
+                FontSize = 11,
+                Padding = new Thickness(8, 2, 8, 2),
+                Cursor = Cursors.Hand,
+            };
+            StyleButton(removeBtn);
+            removeBtn.Click += (_, _) =>
+            {
+                if (FancyText.Core.StylePacks.Remove(pack))
+                {
+                    ApplyPacksChanged($"已卸载 {pack.PackName}");
+                }
+            };
+            DockPanel.SetDock(removeBtn, Dock.Right);
+
+            var row = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+            row.Children.Add(removeBtn);
+            row.Children.Add(text);
+            _packsList.Children.Add(row);
+        }
+    }
+
+    private void OnImportPack()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "导入样式包",
+            Filter = "样式包 (*.json)|*.json|所有文件 (*.*)|*.*",
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        var result = FancyText.Core.StylePacks.Import(dialog.FileName);
+        if (!result.Success)
+        {
+            ShowPackError($"导入失败：{string.Join("\n", result.Errors)}");
+            return;
+        }
+
+        ApplyPacksChanged($"已导入 ✓（命令面板插件需重启后生效）");
+    }
+
+    private void OnExportPinnedPack()
+    {
+        var pinned = _main.PinnedStyles;
+        if (pinned.Count == 0)
+        {
+            ShowPackError("还没有收藏任何样式——在列表里按 Ctrl+D 收藏后再导出");
+            return;
+        }
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "导出收藏为样式包",
+            Filter = "样式包 (*.json)|*.json",
+            FileName = "我的收藏.json",
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var packName = Path.GetFileNameWithoutExtension(dialog.FileName);
+            var pack = FancyText.Core.StylePacks.ExportStyles(pinned, packName, author: null);
+            File.WriteAllText(dialog.FileName, FancyText.Core.StylePacks.Serialize(pack));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            ShowPackError($"导出失败：{ex.Message}");
+            return;
+        }
+
+        _packStatus.Foreground = _theme.Primary;
+        _packStatus.Text = $"已导出 {pinned.Count} 个收藏样式 ✓ 发送这个文件即可分享";
+    }
+
+    /// <summary>包目录变动后的统一收尾：重载目录 + 刷新主窗口 + 重画已装包列表。</summary>
+    private void ApplyPacksChanged(string message)
+    {
+        FancyText.Core.StyleCatalog.Reload();
+        _main.RefreshStyles();
+        FillInstalledPacks();
+        _packStatus.Foreground = _theme.Primary;
+        _packStatus.Text = message;
+    }
+
+    private void ShowPackError(string message)
+    {
+        _packStatus.Foreground = Frozen(0xD1, 0x3B, 0x3B);
+        _packStatus.Text = message.ReplaceLineEndings("  ");
     }
 
     // ================================================== 交互 ==================================================

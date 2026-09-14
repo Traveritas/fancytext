@@ -35,6 +35,8 @@ public static class Program
         TestCatalogIntegrity();
         TestExpandedStyles();
         TestReviewFixes();
+        TestDeclarativeEquivalence();
+        TestStylePacks();
 
         Console.WriteLine();
         Console.WriteLine($"通过 {_passed} 项，失败 {_failed} 项");
@@ -368,6 +370,202 @@ public static class Program
         }
 
         Check(exceptions.Count == 0, "全部样式对样本与空串无异常", string.Join("; ", exceptions.Take(5)));
+    }
+
+    /// <summary>
+    /// 声明式目录自检：每个样式的 Definition 重新编译后与目录中 Transform 输出一致（防解释器回归），
+    /// 外加管道组合与守卫（IfChanged 零命中短路）语义的定向用例。
+    /// </summary>
+    private static void TestDeclarativeEquivalence()
+    {
+        Console.WriteLine("声明式目录：");
+        Check(StyleCatalog.All.All(s => s.Definition != null), "全部样式携带声明式定义");
+        Check(StyleCatalog.All.Count(s => s.Source is null or StyleSource.BuiltIn) == StyleCatalog.BuiltInIds.Count,
+            "内置样式数量与来源标记正确（不受已安装包影响）");
+        Check(StyleCatalog.All.All(s => s.Definition!.Steps.Count > 0), "全部定义至少一个步骤");
+
+        var samples = new[] { "Hello 你好 123", "abz ABZ 019", "你好，世界！", "" };
+        var mismatches = new List<string>();
+        foreach (var style in StyleCatalog.All)
+        {
+            var recompiled = StyleInterpreter.Compile(style.Definition!.Steps);
+            foreach (var sample in samples)
+            {
+                if (style.Id is "zalgo-mini" or "zalgo-normal" or "zalgo-max")
+                {
+                    continue; // 随机算法无法逐字节对比
+                }
+
+                if (recompiled(sample) != style.Transform(sample))
+                {
+                    mismatches.Add(style.Id);
+                    break;
+                }
+            }
+        }
+
+        Check(mismatches.Count == 0, "定义重编译输出与目录一致", string.Join("; ", mismatches.Take(5)));
+
+        // 管道组合与守卫语义的定向用例
+        var pipeOnly = StyleInterpreter.Compile(
+        [
+            new WrapEachStep("ζั͡", ""), new WrapStringStep("", "✿"),
+        ]);
+        Check(pipeOnly("好") == Find("vine-1").Transform("好"), "管道组合（WrapEach→WrapString）与 vine-1 一致");
+        var guarded = StyleInterpreter.Compile(
+        [
+            new UseMapStep("fullwidth"), new IfChangedStep(new SpacingStep(" ")),
+        ]);
+        Check(guarded("你好") == "你好" && guarded("Hi") == Find("spacing-wide").Transform("Hi"), "守卫零命中短路（宽体）");
+        Check(StyleInterpreter.Compile([new UseMapStep("upside-down"), new IfChangedStep(new ReverseStep())])("hello")
+            == Find("upside-down").Transform("hello"), "守卫应用（倒转=映射+倒序）");
+    }
+
+    /// <summary>样式包：JSON 解析（全部步骤类型）、导出往返、坏输入校验、安装/扫描/卸载/冲突。</summary>
+    private static void TestStylePacks()
+    {
+        Console.WriteLine("样式包：");
+        const string packJson = """
+        {
+          "schemaVersion": 1,
+          "name": "测试包",
+          "author": "tester",
+          "description": "覆盖全部步骤类型的样例包",
+          "styles": [
+            { "id": "test-caesar", "name": "凯撒 3", "category": "encoding",
+              "note": "a→d b→e 的迷你凯撒",
+              "steps": [ { "op": "mapReplace", "map": { "a": "d", "b": "e" } } ] },
+            { "id": "test-wing", "name": "测试翅膀", "category": "decoration",
+              "steps": [ { "op": "wrapString", "prefix": "꧁", "suffix": "꧂" } ] },
+            { "id": "test-combo", "name": "组合管道", "category": "cjk-effect",
+              "steps": [
+                { "op": "useMap", "map": "bold" },
+                { "op": "appendMark", "mark": "\u0488", "repeat": 2 },
+                { "op": "ifChanged", "inner": { "op": "reverse" } }
+              ] },
+            { "id": "test-alg", "name": "算法引用", "category": "transform",
+              "steps": [ { "op": "algorithm", "name": "rot13" } ] }
+          ]
+        }
+        """;
+
+        var parsed = StylePacks.ParseJson(packJson, "test.json");
+        Check(parsed.Pack is not null, "样例包解析成功", string.Join("; ", parsed.Errors));
+        if (parsed.Pack is not { } pack)
+        {
+            return;
+        }
+
+        Check(pack.Styles.Count == 4, "包内样式数");
+        var styles = pack.Styles.Select(d => StyleFactory.FromDefinition(d, new StyleSource.Pack(pack.Name))).ToDictionary(s => s.Id);
+        Check(styles["test-caesar"].Transform("ab") == "de", "mapReplace 内联映射生效");
+        Check(styles["test-wing"].Transform("你好") == "꧁你好꧂", "wrapString 生效");
+        Check(styles["test-combo"].Transform("a") == "𝐚\u0488\u0488", "组合管道（useMap+appendMark+守卫）生效");
+        Check(styles["test-combo"].Transform("你好") == "好\u0488\u0488你\u0488\u0488", "组合管道守卫不短路（appendMark 已改变文本，字素倒序）");
+        Check(styles["test-alg"].Transform("hello") == "uryyb", "algorithm 引用生效");
+        Check(styles["test-caesar"].Source is StyleSource.Pack { PackName: "测试包" }, "来源标记为包");
+
+        // 导出 → 序列化 → 解析 → 重编译 输出一致
+        var exported = StylePacks.ExportStyles([Find("bold"), Find("wing-classic"), Find("spacing-wide")], "我的收藏", "我");
+        var round = StylePacks.ParseJson(StylePacks.Serialize(exported), "roundtrip.json");
+        Check(round.Pack is not null && round.Pack.Styles.Count == 3, "导出→解析往返成功", string.Join("; ", round.Errors));
+        if (round.Pack is { } roundPack)
+        {
+            foreach (var def in roundPack.Styles)
+            {
+                var rebuilt = StyleFactory.FromDefinition(def);
+                Check(rebuilt.Transform("Hello 你好 123") == Find(def.Id).Transform("Hello 你好 123"), $"往返输出一致：{def.Id}");
+            }
+        }
+
+        // 坏输入：每条都必须被拦下（Pack 为 null 且 Errors 有内容）
+        var badPacks = new (string Name, string Json)[]
+        {
+            ("孤立代理对", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"encoding","steps":[{"op":"mapReplace","map":{"a":"\ud800"}}]}]}"""),
+            ("控制字符值", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"encoding","steps":[{"op":"mapReplace","map":{"a":"a\u0007b"}}]}]}"""),
+            ("未知 op", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"encoding","steps":[{"op":"explode"}]}]}"""),
+            ("未知内置表", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"encoding","steps":[{"op":"useMap","map":"nope"}]}]}"""),
+            ("未知算法", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"transform","steps":[{"op":"algorithm","name":"nope"}]}]}"""),
+            ("未知分类", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"fancy","steps":[{"op":"reverse"}]}]}"""),
+            ("schemaVersion 不符", """{"schemaVersion":2,"name":"x","styles":[{"id":"a-1","name":"A","category":"encoding","steps":[{"op":"reverse"}]}]}"""),
+            ("空样式表", """{"schemaVersion":1,"name":"x","styles":[]}"""),
+            ("嵌套守卫", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"encoding","steps":[{"op":"ifChanged","inner":{"op":"ifChanged","inner":{"op":"reverse"}}}]}]}"""),
+            ("repeat 超限", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"encoding","steps":[{"op":"appendMark","mark":"\u0488","repeat":9}]}]}"""),
+            ("映射键多字符", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"encoding","steps":[{"op":"mapReplace","map":{"ab":"c"}}]}]}"""),
+            ("包内 ID 重复", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"encoding","steps":[{"op":"reverse"}]},{"id":"a-1","name":"B","category":"encoding","steps":[{"op":"reverse"}]}]}"""),
+            ("ID 格式非法", """{"schemaVersion":1,"name":"x","styles":[{"id":"Bad_Id","name":"A","category":"encoding","steps":[{"op":"reverse"}]}]}"""),
+        };
+        foreach (var (name, json) in badPacks)
+        {
+            var result = StylePacks.ParseJson(json, name + ".json");
+            Check(result.Pack is null && result.Errors.Count > 0, $"拦截：{name}", string.Join("; ", result.Errors));
+        }
+
+        // 安装 / 扫描 / Reload / 冲突 / 卸载（临时目录）
+        var tempDir = Path.Combine(Path.GetTempPath(), "fancytext-packs-test-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(tempDir);
+        StylePacks.DirectoryOverrideForTests = tempDir;
+        try
+        {
+            var sourcePath = Path.Combine(tempDir, "source-file.json");
+            File.WriteAllText(sourcePath, packJson);
+            var import = StylePacks.Import(sourcePath);
+            Check(import.Success, "导入安装成功", string.Join("; ", import.Errors));
+            Check(import.InstalledPath == Path.Combine(tempDir, "测试包.json"), "落盘为包名文件名", import.InstalledPath ?? "");
+
+            var installed = StylePacks.LoadInstalled();
+            Check(installed.Count == 1 && installed[0].PackName == "测试包" && installed[0].Styles.Count == 4
+                && installed[0].Error is null, "扫描已安装包", string.Join("; ", installed.Select(i => i.Error)));
+
+            StyleCatalog.Reload();
+            Check(StyleCatalog.All.Count == StyleCatalog.BuiltInIds.Count + 4, "Reload 后包样式进入目录");
+            Check(StyleCatalog.All.Any(s => s.Id == "test-caesar" && s.Source is StyleSource.Pack { PackName: "测试包" }), "包样式带来源标记");
+
+            var conflictJson = """{"schemaVersion":1,"name":"冲突包","styles":[{"id":"bold","name":"冒充粗体","category":"latin-fancy","steps":[{"op":"reverse"}]}]}""";
+            var conflictPath = Path.Combine(tempDir, "conflict.json");
+            File.WriteAllText(conflictPath, conflictJson);
+            var conflict = StylePacks.Import(conflictPath);
+            Check(!conflict.Success && conflict.Errors.Count > 0, "与内置 ID 冲突被拒", string.Join("; ", conflict.Errors));
+
+            Check(StylePacks.Remove("测试包"), "卸载成功");
+            StyleCatalog.Reload();
+            Check(StyleCatalog.All.All(s => s.Id != "test-caesar"), "卸载后 Reload 移除包样式");
+        }
+        finally
+        {
+            StylePacks.DirectoryOverrideForTests = null;
+            try
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        // 手动放置的坏包不拖累扫描
+        var tempDir2 = Path.Combine(Path.GetTempPath(), "fancytext-packs-broken-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(tempDir2);
+        StylePacks.DirectoryOverrideForTests = tempDir2;
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir2, "broken.json"), "{ 不是 JSON");
+            File.WriteAllText(Path.Combine(tempDir2, "good.json"), packJson);
+            var scan = StylePacks.LoadInstalled();
+            Check(scan.Count == 2 && scan.Count(i => i.Error is not null) == 1 && scan.Count(i => i.Error is null) == 1,
+                "坏包隔离（好包仍可加载）", string.Join("; ", scan.Select(i => $"{i.PackName}: {i.Error}")));
+        }
+        finally
+        {
+            StylePacks.DirectoryOverrideForTests = null;
+            try
+            {
+                Directory.Delete(tempDir2, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
     }
 
     private static TextStyle Find(string id) =>
