@@ -37,6 +37,7 @@ public static class Program
         TestReviewFixes();
         TestDeclarativeEquivalence();
         TestStylePacks();
+        TestLocalization();
 
         Console.WriteLine();
         Console.WriteLine($"通过 {_passed} 项，失败 {_failed} 项");
@@ -574,6 +575,63 @@ public static class Program
             {
             }
         }
+    }
+
+    /// <summary>本地化：语言解析、分类双语、内置样式英文层全覆盖、样式包 nameEn 往返与校验。</summary>
+    private static void TestLocalization()
+    {
+        Console.WriteLine("本地化：");
+        Check(Localization.Resolve("zh") == AppLanguage.Chinese, "语言解析 zh");
+        Check(Localization.Resolve("en") == AppLanguage.English, "语言解析 en");
+        Check(Localization.Resolve("auto") == Localization.FromSystem(), "语言解析 auto=跟随系统");
+        Check(Localization.Resolve(null) == AppLanguage.Chinese, "无偏好默认中文");
+        Check(Localization.Resolve("garbage") == AppLanguage.Chinese, "未知语言值回退默认中文");
+        Check(Loc.S(AppLanguage.Chinese, "收藏", "Pinned") == "收藏" && Loc.S(AppLanguage.English, "收藏", "Pinned") == "Pinned", "Loc.S 二选一");
+        Check(TextStyleCategory.CjkEffect.DisplayName(AppLanguage.English) == "Effects"
+            && TextStyleCategory.LatinFancy.DisplayName(AppLanguage.English) == "Latin Fancy"
+            && TextStyleCategory.Encoding.DisplayName(AppLanguage.English) == "Encoding", "分类英文名");
+
+        // 英文层：内置 126 样式必须全部有英文名与英文 Note（StyleEnglish 表）
+        var builtIn = StyleCatalog.All.Where(s => s.Source is null or StyleSource.BuiltIn).ToList();
+        var missingNames = builtIn.Where(s => string.IsNullOrEmpty(s.NameEn)).Select(s => s.Id).ToList();
+        Check(missingNames.Count == 0, $"内置样式英文名全覆盖（{builtIn.Count - missingNames.Count}/{builtIn.Count}）",
+            $"缺失：{string.Join("、", missingNames.Take(5))}");
+        var missingNotes = builtIn.Where(s => string.IsNullOrEmpty(s.NoteEn) && !string.IsNullOrEmpty(s.Note)).Select(s => s.Id).ToList();
+        Check(missingNotes.Count == 0, $"内置样式英文 Note 全覆盖（{builtIn.Count - missingNotes.Count}/{builtIn.Count}）",
+            $"缺失：{string.Join("、", missingNotes.Take(5))}");
+        Check(builtIn.All(s => s.GetName(AppLanguage.English) == s.NameEn && s.GetName(AppLanguage.Chinese) == s.Name),
+            "GetName 按语言取名");
+        Check(Find("bold").GetNote(AppLanguage.English) == Find("bold").NoteEn, "GetNote 按语言取说明");
+
+        // 样式包 nameEn/noteEn：解析 → 编译 → 导出往返
+        var packJson = """
+        {
+          "schemaVersion": 1,
+          "name": "bilingual",
+          "styles": [
+            { "id": "bi-1", "name": "双语样式", "nameEn": "Bilingual Style", "category": "encoding",
+              "note": "中文说明", "noteEn": "English note",
+              "steps": [ { "op": "reverse" } ] }
+          ]
+        }
+        """;
+        var parsed = StylePacks.ParseJson(packJson, "bi.json");
+        Check(parsed.Pack is not null, "双语字段包解析成功", string.Join("; ", parsed.Errors));
+        if (parsed.Pack is { } bi)
+        {
+            var style = StyleFactory.FromDefinition(bi.Styles[0]);
+            Check(style.NameEn == "Bilingual Style" && style.NoteEn == "English note", "nameEn/noteEn 进入样式");
+            Check(style.GetName(AppLanguage.English) == "Bilingual Style", "包样式英文名生效");
+            var round = StylePacks.ParseJson(StylePacks.Serialize(StylePacks.ExportStyles([Find("bold")], "rt2")), "rt2.json");
+            Check(round.Pack?.Styles[0].NameEn == Find("bold").NameEn, "导出携带内置英文名往返");
+        }
+
+        // 超长 nameEn 被拦截
+        var tooLongEn = new string('x', StylePacks.MaxNameLength + 1);
+        var bad = StylePacks.ParseJson(
+            $$"""{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","nameEn":"{{tooLongEn}}","category":"encoding","steps":[{"op":"reverse"}]}]}""",
+            "bad.json");
+        Check(bad.Pack is null, "拦截：nameEn 超长");
     }
 
     private static TextStyle Find(string id) =>

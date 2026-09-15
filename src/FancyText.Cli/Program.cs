@@ -20,6 +20,9 @@ namespace FancyText.Cli;
 /// </summary>
 public static class Program
 {
+    /// <summary>界面语言：跟随共享 state.json 的语言偏好（桌面版/插件切换后 CLI 同步），无则系统文化。</summary>
+    private static AppLanguage Lang { get; } = Localization.Resolve(new UsageState().Language);
+
     public static int Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
@@ -32,7 +35,7 @@ public static class Program
                 case "--import":
                     if (i + 1 >= args.Length)
                     {
-                        Console.Error.WriteLine("--import 需要包文件路径");
+                        Console.Error.WriteLine(Loc.S(Lang, "--import 需要包文件路径", "--import requires a pack file path"));
                         return 2;
                     }
 
@@ -44,7 +47,7 @@ public static class Program
                 case "--remove":
                     if (i + 1 >= args.Length)
                     {
-                        Console.Error.WriteLine("--remove 需要包名（用 --packs 查看）");
+                        Console.Error.WriteLine(Loc.S(Lang, "--remove 需要包名（用 --packs 查看）", "--remove requires a pack name (see --packs)"));
                         return 2;
                     }
 
@@ -59,7 +62,7 @@ public static class Program
                         {
                             if (j + 1 >= args.Length)
                             {
-                                Console.Error.WriteLine("--out 需要输出文件路径");
+                                Console.Error.WriteLine(Loc.S(Lang, "--out 需要输出文件路径", "--out requires an output file path"));
                                 return 2;
                             }
 
@@ -81,10 +84,10 @@ public static class Program
         {
             foreach (var g in StyleCatalog.All.GroupBy(s => s.Category))
             {
-                Console.WriteLine($"[{g.Key.DisplayName()}]");
+                Console.WriteLine($"[{g.Key.DisplayName(Lang)}]");
                 foreach (var s in g)
                 {
-                    Console.WriteLine($"  {s.Id,-22} {s.Name}");
+                    Console.WriteLine($"  {s.Id,-22} {s.GetName(Lang)}");
                 }
             }
 
@@ -106,7 +109,7 @@ public static class Program
                 string.Equals(s.Id, rest[0], StringComparison.OrdinalIgnoreCase));
             if (style is null)
             {
-                Console.Error.WriteLine($"未知样式 ID：{rest[0]}（用 --list 查看全部）");
+                Console.Error.WriteLine(Loc.S(Lang, $"未知样式 ID：{rest[0]}（用 --list 查看全部）", $"Unknown style ID: {rest[0]} (see --list)"));
                 return 2;
             }
 
@@ -125,11 +128,11 @@ public static class Program
         }
 
         // 默认：全部样式表格
-        Console.WriteLine($"输入：{text}");
+        Console.WriteLine(Loc.S(Lang, $"输入：{text}", $"Input: {text}"));
         Console.WriteLine(new string('─', 60));
         foreach (var g in StyleCatalog.All.GroupBy(s => s.Category))
         {
-            Console.WriteLine($"[{g.Key.DisplayName()}]");
+            Console.WriteLine($"[{g.Key.DisplayName(Lang)}]");
             foreach (var style in g)
             {
                 var output = SafeTransform(style, text);
@@ -138,7 +141,7 @@ public static class Program
                     continue; // 不适用（如中文之于纯拉丁映射、摩斯之于纯中文）
                 }
 
-                Console.WriteLine($"  {style.Name,-18} → {OneLine(output)}");
+                Console.WriteLine($"  {style.GetName(Lang),-18} → {OneLine(output)}");
             }
         }
 
@@ -193,7 +196,7 @@ public static class Program
         var result = StylePacks.Import(path);
         if (!result.Success)
         {
-            Console.Error.WriteLine("导入失败：");
+            Console.Error.WriteLine(Loc.S(Lang, "导入失败：", "Import failed:"));
             foreach (var error in result.Errors)
             {
                 Console.Error.WriteLine($"  {error}");
@@ -202,8 +205,8 @@ public static class Program
             return 1;
         }
 
-        Console.WriteLine($"已导入 ✓（{result.InstalledPath}）");
-        Console.WriteLine("桌面版即时生效；命令面板插件重启后生效。");
+        Console.WriteLine(Loc.S(Lang, $"已导入 ✓（{result.InstalledPath}）", $"Imported ✓ ({result.InstalledPath})"));
+        Console.WriteLine(Loc.S(Lang, "桌面版即时生效；命令面板插件重启后生效。", "The desktop app picks it up immediately; the Command Palette extension after a restart."));
         return 0;
     }
 
@@ -212,7 +215,9 @@ public static class Program
         var packs = StylePacks.LoadInstalled();
         if (packs.Count == 0)
         {
-            Console.WriteLine($"尚未安装样式包（把 .json 放进 {StylePacks.DefaultPacksDirectory} 即可）");
+            Console.WriteLine(Loc.S(Lang,
+                $"尚未安装样式包（把 .json 放进 {StylePacks.DefaultPacksDirectory} 即可）",
+                $"No style packs installed (drop a .json into {StylePacks.DefaultPacksDirectory})"));
             return 0;
         }
 
@@ -220,15 +225,19 @@ public static class Program
         {
             if (pack.Error is null)
             {
-                Console.WriteLine($"  {pack.PackName,-20} {pack.Styles.Count} 个样式  {pack.FilePath}");
+                Console.WriteLine(Loc.S(Lang,
+                    $"  {pack.PackName,-20} {pack.Styles.Count} 个样式  {pack.FilePath}",
+                    $"  {pack.PackName,-20} {pack.Styles.Count} styles  {pack.FilePath}"));
                 foreach (var style in pack.Styles)
                 {
-                    Console.WriteLine($"    {style.Id,-22} {style.Name}");
+                    Console.WriteLine($"    {style.Id,-22} {style.GetName(Lang)}");
                 }
             }
             else
             {
-                Console.WriteLine($"  {Path.GetFileName(pack.FilePath),-20} 损坏：{pack.Error}");
+                Console.WriteLine(Loc.S(Lang,
+                    $"  {Path.GetFileName(pack.FilePath),-20} 损坏：{pack.Error}",
+                    $"  {Path.GetFileName(pack.FilePath),-20} broken: {pack.Error}"));
             }
         }
 
@@ -239,11 +248,13 @@ public static class Program
     {
         if (!StylePacks.Remove(packName))
         {
-            Console.Error.WriteLine($"没有找到包：{packName}（用 --packs 查看已安装的包名）");
+            Console.Error.WriteLine(Loc.S(Lang,
+                $"没有找到包：{packName}（用 --packs 查看已安装的包名）",
+                $"Pack not found: {packName} (see --packs for installed pack names)"));
             return 1;
         }
 
-        Console.WriteLine($"已卸载 {packName} ✓");
+        Console.WriteLine(Loc.S(Lang, $"已卸载 {packName} ✓", $"Removed {packName} ✓"));
         return 0;
     }
 
@@ -251,7 +262,9 @@ public static class Program
     {
         if (ids.Count == 0)
         {
-            Console.Error.WriteLine("--export 至少需要一个样式 ID（用 --list 查看全部；收藏样式同样可导出）");
+            Console.Error.WriteLine(Loc.S(Lang,
+                "--export 至少需要一个样式 ID（用 --list 查看全部；收藏样式同样可导出）",
+                "--export needs at least one style ID (see --list; pinned styles work too)"));
             return 2;
         }
 
@@ -272,12 +285,14 @@ public static class Program
 
         if (missing.Count > 0)
         {
-            Console.Error.WriteLine($"未知样式 ID：{string.Join("、", missing)}（用 --list 查看全部）");
+            Console.Error.WriteLine(Loc.S(Lang,
+                $"未知样式 ID：{string.Join("、", missing)}（用 --list 查看全部）",
+                $"Unknown style ID(s): {string.Join(", ", missing)} (see --list)"));
             return 2;
         }
 
         var packName = outFile is null
-            ? "导出包"
+            ? Loc.S(Lang, "导出包", "exported-pack")
             : Path.GetFileNameWithoutExtension(outFile);
         var json = StylePacks.Serialize(StylePacks.ExportStyles(styles, packName));
         if (outFile is null)
@@ -293,11 +308,11 @@ public static class Program
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Console.Error.WriteLine($"写入失败：{ex.Message}");
+            Console.Error.WriteLine(Loc.S(Lang, $"写入失败：{ex.Message}", $"Write failed: {ex.Message}"));
             return 1;
         }
 
-        Console.WriteLine($"已导出 {styles.Count} 个样式 → {outFile}");
+        Console.WriteLine(Loc.S(Lang, $"已导出 {styles.Count} 个样式 → {outFile}", $"Exported {styles.Count} styles → {outFile}"));
         return 0;
     }
 }

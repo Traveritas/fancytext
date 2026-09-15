@@ -14,6 +14,7 @@
 - **回车复制**，Toast 反馈；右键有「复制并保持打开」「收藏」等命令。
 - **还原功能**：「变换」分类内置「还原（去装饰）」，可把被组合符装饰过的文字清洗回原文；「中文」分类有「火星文还原」。
 - **样式包**：别人整理好的样式合集（`.json`）一键导入（见下节），收藏也能导出成包分享。
+- **中英双语**：内置 126 个样式全部带英文名与英文说明；设置页 →「语言」切换（中文 / English / 跟随系统），桌面版即时生效，插件与 CLI 共享同一偏好（`state.json`），插件在面板进程重启后生效。样式包可带 `nameEn` / `noteEn` 双语字段。
 
 ## 样式包：导入与分享
 
@@ -24,7 +25,7 @@
 - **管理**：设置页列出已装包（可卸载，损坏的包会标红且不拖累其它包）；`fancy --packs` / `fancy --remove 包名`。
 - 桌面版导入/卸载即时生效；命令面板插件在面板进程重启后生效。列表中包样式的分类后会标注来源包名。
 - **安全校验**：ID 冲突（内置/其它包）拒绝导入；孤立代理对、控制字符、超限参数（映射条数/步骤数/文件大小 2MB）一律拦截。
-- 包格式与全部步骤写法（mapReplace / useMap / appendMark / wrapString / wrapEach / spacing / reverse / algorithm / ifChanged 守卫）见可直接导入体验的 [docs/sample-pack.json](docs/sample-pack.json)。
+- 包格式与全部步骤写法（mapReplace / useMap / appendMark / wrapString / wrapEach / spacing / reverse / algorithm / ifChanged 守卫）见可直接导入体验的 [docs/sample-pack.json](docs/sample-pack.json)；样式可带可选 `nameEn` / `noteEn` 双语字段，英文名缺失时回退 `name`。
 
 ### 样式分类（126 个）
 
@@ -95,6 +96,8 @@ src/FancyText.Core/        转换引擎（无 UI 依赖，CLI 与插件共用）
   StyleInterpreter.cs      步骤管道 → 委托（构建期一次编译，运行时纯委托链）
   StylePack.cs             样式包模型、校验、导入/导出/扫描/卸载（一文件一包，安全上限）
   StylePackJson.cs         包 JSON 的 op 判别转换器 + 分类/算法 kebab 命名
+  StyleEnglish.cs          内置样式的英文层（NameEn/NoteEn 按 ID 补丁）
+  Localization.cs          AppLanguage / Loc.S —— 三端共用的中英双语机制
   KnownTransforms.cs       内置命名映射表与算法注册表（UseMap / Algorithm 的引用目标）
   EncodingTransforms.cs    NATO / A1Z26 / 二进制 / 十六进制 / 交替大小写
   Resources/spark-simple.json  cnchar 火星文字典（MIT）

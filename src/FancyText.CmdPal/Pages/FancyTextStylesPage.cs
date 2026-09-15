@@ -23,8 +23,6 @@ internal sealed partial class FancyTextStylesPage : DebouncedTextPageBase
 
     private static readonly IconInfo PageIcon = new("\uE8C8");
     private static readonly IconInfo NoResultIcon = new("\uE7BA");
-    private static readonly IReadOnlyDictionary<TextStyleCategory, Tag> CategoryTags =
-        Enum.GetValues<TextStyleCategory>().ToDictionary(c => c, c => new Tag(c.DisplayName()));
 
     /// <summary>每个样式的一组持久 UI 对象（ListItem + 复制命令 + 详情），跨刷新复用、仅改属性。</summary>
     private sealed class StyleEntry
@@ -38,6 +36,8 @@ internal sealed partial class FancyTextStylesPage : DebouncedTextPageBase
     }
 
     private readonly UsageState _usage;
+    private readonly AppLanguage _lang;
+    private readonly IReadOnlyDictionary<TextStyleCategory, Tag> _categoryTags;
     private readonly List<StyleEntry> _entries;
     private readonly ListItem _noResultItem;
 
@@ -46,19 +46,22 @@ internal sealed partial class FancyTextStylesPage : DebouncedTextPageBase
         : base(shared, diagTag: category?.ToString() ?? "All", readSharedText: true)
     {
         _usage = usage;
+        _lang = Localization.Resolve(usage.Language);
+        _categoryTags = Enum.GetValues<TextStyleCategory>()
+            .ToDictionary(c => c, c => new Tag(c.DisplayName(_lang)));
         Category = category;
 
-        var name = category is { } c ? c.DisplayName() : "全部样式";
+        var name = category is { } c ? c.DisplayName(_lang) : Loc.S(_lang, "全部样式", "All styles");
         Id = PageIdFor(category);
         Icon = PageIcon;
         Name = name;
-        Title = $"花式文字 · {name}";
-        PlaceholderText = "输入或粘贴要转换的文字（留空则使用剪贴板）";
+        Title = Loc.S(_lang, $"花式文字 · {name}", $"Fancy Text · {name}");
+        PlaceholderText = Loc.S(_lang, "输入或粘贴要转换的文字（留空则使用剪贴板）", "Type or paste text to convert (uses clipboard if empty)");
         ShowDetails = true;
         EmptyContent = new ListItem
         {
-            Title = "输入文字以查看全部样式",
-            Subtitle = "在搜索框输入，或复制文字后直接打开本页",
+            Title = Loc.S(_lang, "输入文字以查看全部样式", "Type text to see all styles"),
+            Subtitle = Loc.S(_lang, "在搜索框输入，或复制文字后直接打开本页", "Type in the search box, or copy text and open this page"),
             Icon = PageIcon,
         };
 
@@ -70,15 +73,15 @@ internal sealed partial class FancyTextStylesPage : DebouncedTextPageBase
         foreach (var style in styles)
         {
             void RecordUse() => _usage.RecordUse(style.Id);
-            var copy = new CopyTextCommandEx(style, StyleCatalog.DefaultSample, onUsed: RecordUse);
-            var copyKeepOpen = new CopyTextCommandEx(style, StyleCatalog.DefaultSample, keepOpen: true, onUsed: RecordUse);
+            var copy = new CopyTextCommandEx(style, StyleCatalog.DefaultSample, _lang, onUsed: RecordUse);
+            var copyKeepOpen = new CopyTextCommandEx(style, StyleCatalog.DefaultSample, _lang, keepOpen: true, onUsed: RecordUse);
             var togglePin = new TogglePinCommand(usage, style.Id);
-            var details = new Details { Title = style.Name, Body = string.Empty };
+            var details = new Details { Title = style.GetName(_lang), Body = string.Empty };
             var item = new ListItem(copy)
             {
                 Title = string.Empty,
-                Subtitle = style.Name,
-                Tags = [CategoryTags[style.Category]],
+                Subtitle = style.GetName(_lang),
+                Tags = [_categoryTags[style.Category]],
                 Details = details,
                 MoreCommands =
                 [
@@ -99,8 +102,8 @@ internal sealed partial class FancyTextStylesPage : DebouncedTextPageBase
 
         _noResultItem = new ListItem(new NoOpCommand())
         {
-            Title = "没有适用于这段文字的样式",
-            Subtitle = "试试输入拉丁字母、数字或常用汉字",
+            Title = Loc.S(_lang, "没有适用于这段文字的样式", "No applicable styles for this text"),
+            Subtitle = Loc.S(_lang, "试试输入拉丁字母、数字或常用汉字", "Try Latin letters, digits, or common Chinese characters"),
             Icon = NoResultIcon,
         };
 
@@ -122,7 +125,12 @@ internal sealed partial class FancyTextStylesPage : DebouncedTextPageBase
     {
         var previewInput = TruncateTextElements(text, MaxPreviewInputChars);
         var inputTruncated = !string.Equals(previewInput, text, StringComparison.Ordinal);
-        var truncatedNote = inputTruncated ? $"\n\n（预览仅前 {MaxPreviewInputChars} 字，回车复制的是**完整**转换结果）" : string.Empty;
+        var truncatedNote = inputTruncated
+            ? Loc.S(
+                _lang,
+                $"\n\n（预览仅前 {MaxPreviewInputChars} 字，回车复制的是**完整**转换结果）",
+                $"\n\n(Preview shows the first {MaxPreviewInputChars} characters; Enter copies the **full** result)")
+            : string.Empty;
 
         List<IListItem> result = [];
         foreach (var entry in _entries)
@@ -144,12 +152,15 @@ internal sealed partial class FancyTextStylesPage : DebouncedTextPageBase
             }
 
             var pinned = _usage.IsPinned(entry.Style.Id);
+            var styleName = entry.Style.GetName(_lang);
             entry.Copy.UpdateInput(text);
             entry.CopyKeepOpen.UpdateInput(text);
             entry.Item.Title = Preview(preview);
-            entry.Item.Subtitle = pinned ? $"⭐ {entry.Style.Name}" : entry.Style.Name;
-            entry.TogglePin.Name = pinned ? $"取消收藏「{entry.Style.Name}」" : $"收藏「{entry.Style.Name}」";
-            entry.Details.Body = $"```\n{preview}\n```\n\n{entry.Style.Note ?? string.Empty}{truncatedNote}\n\n原文：{previewInput}";
+            entry.Item.Subtitle = pinned ? $"⭐ {styleName}" : styleName;
+            entry.TogglePin.Name = pinned
+                ? Loc.S(_lang, $"取消收藏「{styleName}」", $"Unpin {styleName}")
+                : Loc.S(_lang, $"收藏「{styleName}」", $"Pin {styleName}");
+            entry.Details.Body = $"```\n{preview}\n```\n\n{entry.Style.GetNote(_lang) ?? string.Empty}{truncatedNote}\n\n{Loc.S(_lang, "原文：", "Input:")}{previewInput}";
             result.Add(entry.Item);
         }
 

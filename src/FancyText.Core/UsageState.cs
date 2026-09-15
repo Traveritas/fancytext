@@ -19,6 +19,7 @@ public sealed class UsageState
     private readonly object _gate = new();
     private List<string> _pinned = [];
     private List<string> _recent = [];
+    private string? _language; // "zh" / "en" / null=跟随系统（三端共享的界面语言偏好）
 
     public UsageState()
     {
@@ -26,6 +27,36 @@ public sealed class UsageState
     }
 
     public event Action? Changed;
+
+    /// <summary>界面语言偏好（"zh"/"en"/"auto"=跟随系统，null=默认中文）。CmdPal 插件与桌面版共享。</summary>
+    public string? Language
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _language;
+            }
+        }
+    }
+
+    /// <summary>设置语言偏好并持久化（null=默认中文）。变更即广播 <see cref="Changed"/>。</summary>
+    public void SetLanguage(string? language)
+    {
+        lock (_gate)
+        {
+            var normalized = language is "zh" or "en" or "auto" ? language : null;
+            if (string.Equals(normalized, _language, StringComparison.Ordinal))
+            {
+                return; // 未变化不落盘不广播
+            }
+
+            _language = normalized;
+        }
+
+        Save();
+        Changed?.Invoke();
+    }
 
     public IReadOnlyList<string> Pinned
     {
@@ -124,6 +155,13 @@ public sealed class UsageState
                     .Where(s => !string.IsNullOrEmpty(s))
                     .ToList();
             }
+
+            if (root.TryGetProperty("language", out var language)
+                && language.ValueKind == JsonValueKind.String
+                && language.GetString() is "zh" or "en" or "auto")
+            {
+                _language = language.GetString();
+            }
         }
         catch (Exception)
         {
@@ -139,7 +177,7 @@ public sealed class UsageState
             string json;
             lock (_gate)
             {
-                json = JsonSerializer.Serialize(new { pinned = _pinned, recent = _recent }, JsonOptions);
+                json = JsonSerializer.Serialize(new { pinned = _pinned, recent = _recent, language = _language }, JsonOptions);
             }
 
             File.WriteAllText(StatePath, json);

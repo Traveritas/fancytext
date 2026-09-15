@@ -19,10 +19,16 @@ public sealed record StyleDefinition
     /// <summary>显示名（中文优先，可带英文别名）。</summary>
     public required string Name { get; init; }
 
+    /// <summary>英文显示名（可选；导出/分享的包在英文界面下显示此名，缺省回退 Name）。</summary>
+    public string? NameEn { get; init; }
+
     public required TextStyleCategory Category { get; init; }
 
     /// <summary>机制说明（码点/来源），显示在详情页。</summary>
     public string? Note { get; init; }
+
+    /// <summary>机制说明英文版（可选）。</summary>
+    public string? NoteEn { get; init; }
 
     /// <summary>转换管道，按序应用；不得为空。</summary>
     public required IReadOnlyList<TransformStep> Steps { get; init; }
@@ -52,8 +58,10 @@ public static class StyleFactory
         {
             Id = definition.Id,
             Name = definition.Name,
+            NameEn = definition.NameEn,
             Category = definition.Category,
             Note = definition.Note,
+            NoteEn = definition.NoteEn,
             Definition = definition,
             Source = source ?? new StyleSource.BuiltIn(),
             Transform = StyleInterpreter.Compile(definition.Steps),

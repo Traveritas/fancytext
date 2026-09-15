@@ -19,8 +19,6 @@ internal sealed partial class FancyTextHomePage : DebouncedTextPageBase
     private const int MaxQuickTitleChars = 96;
 
     private static readonly IconInfo PageIcon = new("\uE8C8");
-    private static readonly Tag PinnedTag = new("收藏");
-    private static readonly Tag RecentTag = new("最近");
 
     /// <summary>分类入口的持久 UI 对象（Item 与 Details 共用同一实例，刷新只改属性）。</summary>
     private sealed class Entry
@@ -44,6 +42,9 @@ internal sealed partial class FancyTextHomePage : DebouncedTextPageBase
     }
 
     private readonly UsageState _usage;
+    private readonly AppLanguage _lang;
+    private readonly Tag _pinnedTag;
+    private readonly Tag _recentTag;
     private readonly List<Entry> _entries = [];
     private readonly Dictionary<string, QuickEntry> _quickById = [];
     private readonly IReadOnlyDictionary<string, TextStyle> _stylesById;
@@ -56,16 +57,19 @@ internal sealed partial class FancyTextHomePage : DebouncedTextPageBase
         : base(shared, diagTag: "Home", readSharedText: true)
     {
         _usage = usage;
+        _lang = Localization.Resolve(usage.Language);
+        _pinnedTag = new Tag(Loc.S(_lang, "收藏", "Pinned"));
+        _recentTag = new Tag(Loc.S(_lang, "最近", "Recent"));
         _stylesById = StyleCatalog.All.ToDictionary(s => s.Id, s => s);
 
         Id = HomePageId;
         Icon = PageIcon;
-        Name = "花式文字";
-        Title = "花式文字转换";
-        PlaceholderText = "输入或粘贴要转换的文字（留空则使用剪贴板）";
+        Name = Loc.S(_lang, "花式文字", "Fancy Text");
+        Title = Loc.S(_lang, "花式文字转换", "Convert to fancy text");
+        PlaceholderText = Loc.S(_lang, "输入或粘贴要转换的文字（留空则使用剪贴板）", "Type or paste text to convert (uses clipboard if empty)");
 
         // 「全部样式」入口（Category = null）
-        AddEntry(null, "全部样式", $"{StyleCatalog.All.Count} 个样式，一页浏览", allStylesPage, StyleCatalog.All, []);
+        AddEntry(null, Loc.S(_lang, "全部样式", "All styles"), Loc.S(_lang, $"{StyleCatalog.All.Count} 个样式，一页浏览", $"{StyleCatalog.All.Count} styles on one page"), allStylesPage, StyleCatalog.All, []);
 
         // 分类入口
         foreach (var category in Enum.GetValues<TextStyleCategory>())
@@ -76,7 +80,7 @@ internal sealed partial class FancyTextHomePage : DebouncedTextPageBase
                 .Where(s => s is not null)
                 .Cast<TextStyle>()
                 .ToList();
-            AddEntry(category, category.DisplayName(), $"{styles.Count} 个样式", categoryPages[category], styles, representatives);
+            AddEntry(category, category.DisplayName(_lang), Loc.S(_lang, $"{styles.Count} 个样式", $"{styles.Count} styles"), categoryPages[category], styles, representatives);
         }
 
         _usage.Changed += OnUsageChanged;
@@ -114,20 +118,20 @@ internal sealed partial class FancyTextHomePage : DebouncedTextPageBase
         }
 
         void RecordUse() => _usage.RecordUse(style.Id);
-        var copy = new CopyTextCommandEx(style, StyleCatalog.DefaultSample, onUsed: RecordUse);
-        var copyKeepOpen = new CopyTextCommandEx(style, StyleCatalog.DefaultSample, keepOpen: true, onUsed: RecordUse);
+        var copy = new CopyTextCommandEx(style, StyleCatalog.DefaultSample, _lang, onUsed: RecordUse);
+        var copyKeepOpen = new CopyTextCommandEx(style, StyleCatalog.DefaultSample, _lang, keepOpen: true, onUsed: RecordUse);
         var togglePin = new TogglePinCommand(_usage, style.Id);
-        var details = new Details { Title = style.Name, Body = string.Empty };
+        var details = new Details { Title = style.GetName(_lang), Body = string.Empty };
         var item = new ListItem(copy)
         {
             Title = string.Empty,
-            Subtitle = style.Name,
+            Subtitle = style.GetName(_lang),
             Icon = PageIcon,
             Details = details,
             MoreCommands =
             [
                 new CommandContextItem(copyKeepOpen),
-                new CommandContextItem(new GoToCategoryCommand(style.Category, style.Category.DisplayName())),
+                new CommandContextItem(new GoToCategoryCommand(style.Category, _lang)),
                 new CommandContextItem(togglePin),
             ],
         };
@@ -152,7 +156,7 @@ internal sealed partial class FancyTextHomePage : DebouncedTextPageBase
                 continue;
             }
 
-            if (TryUpdateQuickEntry(GetOrCreateQuickEntry(style), previewInput, text, PinnedTag, pinned: true))
+            if (TryUpdateQuickEntry(GetOrCreateQuickEntry(style), previewInput, text, _pinnedTag, pinned: true))
             {
                 result.Add(GetOrCreateQuickEntry(style).Item);
             }
@@ -172,7 +176,7 @@ internal sealed partial class FancyTextHomePage : DebouncedTextPageBase
                 continue;
             }
 
-            if (TryUpdateQuickEntry(GetOrCreateQuickEntry(style), previewInput, text, RecentTag, pinned: false))
+            if (TryUpdateQuickEntry(GetOrCreateQuickEntry(style), previewInput, text, _recentTag, pinned: false))
             {
                 result.Add(GetOrCreateQuickEntry(style).Item);
                 recentCount++;
@@ -184,12 +188,15 @@ internal sealed partial class FancyTextHomePage : DebouncedTextPageBase
 
         foreach (var entry in _entries)
         {
-            var body = $"当前文本：{previewInput}\n\n包含样式：{string.Join("、", entry.Styles.Select(s => s.Name).Take(12))}";
+            var body = Loc.S(
+                _lang,
+                $"当前文本：{previewInput}\n\n包含样式：{string.Join("、", entry.Styles.Select(s => s.Name).Take(12))}",
+                $"Current text: {previewInput}\n\nStyles: {string.Join(", ", entry.Styles.Select(s => s.GetName(_lang)).Take(12))}");
             string subtitle;
             if (entry.Category is null)
             {
                 var applicable = applicableByCategory.Values.Sum();
-                subtitle = $"{entry.Styles.Count} 个样式 · 当前文本可用 {applicable} 个";
+                subtitle = Loc.S(_lang, $"{entry.Styles.Count} 个样式 · 当前文本可用 {applicable} 个", $"{entry.Styles.Count} styles · {applicable} apply to this text");
             }
             else
             {
@@ -218,11 +225,14 @@ internal sealed partial class FancyTextHomePage : DebouncedTextPageBase
                 }
 
                 subtitle = applicable == 0
-                    ? $"{entry.Styles.Count} 个样式 · 当前文本无适用样式"
-                    : $"{entry.Styles.Count} 个样式 · 可用 {applicable} · {repText}";
+                    ? Loc.S(_lang, $"{entry.Styles.Count} 个样式 · 当前文本无适用样式", $"{entry.Styles.Count} styles · none apply to this text")
+                    : Loc.S(_lang, $"{entry.Styles.Count} 个样式 · 可用 {applicable} · {repText}", $"{entry.Styles.Count} styles · {applicable} available · {repText}");
                 if (reps.Count > 0)
                 {
-                    body += $"\n\n效果示例：\n```\n{string.Join("\n", reps)}\n```";
+                    body += Loc.S(
+                        _lang,
+                        $"\n\n效果示例：\n```\n{string.Join("\n", reps)}\n```",
+                        $"\n\nExamples:\n```\n{string.Join("\n", reps)}\n```");
                 }
             }
 
@@ -260,11 +270,14 @@ internal sealed partial class FancyTextHomePage : DebouncedTextPageBase
 
         entry.Copy.UpdateInput(fullText);
         entry.CopyKeepOpen.UpdateInput(fullText);
+        var styleName = entry.Style.GetName(_lang);
         entry.Item.Title = singleLine;
-        entry.Item.Subtitle = pinned ? $"⭐ {entry.Style.Name}" : entry.Style.Name;
+        entry.Item.Subtitle = pinned ? $"⭐ {styleName}" : styleName;
         entry.Item.Tags = [tag];
-        entry.TogglePin.Name = pinned ? $"取消收藏「{entry.Style.Name}」" : $"收藏「{entry.Style.Name}」";
-        entry.Details.Body = $"```\n{preview}\n```\n\n{entry.Style.Note ?? string.Empty}\n\n原文：{previewInput}";
+        entry.TogglePin.Name = pinned
+            ? Loc.S(_lang, $"取消收藏「{styleName}」", $"Unpin {styleName}")
+            : Loc.S(_lang, $"收藏「{styleName}」", $"Pin {styleName}");
+        entry.Details.Body = $"```\n{preview}\n```\n\n{entry.Style.GetNote(_lang) ?? string.Empty}\n\n{Loc.S(_lang, "原文：", "Input:")}{previewInput}";
         return true;
     }
 

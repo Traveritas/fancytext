@@ -595,6 +595,13 @@ public static partial class StyleCatalog
 
         AddExpandedStyles(list);
 
-        return list.Select(d => StyleFactory.FromDefinition(d)).ToList();
+        return list.Select(ApplyEnglish).Select(d => StyleFactory.FromDefinition(d)).ToList();
     }
+
+    /// <summary>给内置定义叠加英文层（StyleCatalog.English.cs 的名称/机制说明表；包样式自带 nameEn/noteEn）。</summary>
+    private static StyleDefinition ApplyEnglish(StyleDefinition definition) => definition with
+    {
+        NameEn = definition.NameEn ?? StyleEnglish.Names.GetValueOrDefault(definition.Id),
+        NoteEn = definition.NoteEn ?? StyleEnglish.Notes.GetValueOrDefault(definition.Id),
+    };
 }

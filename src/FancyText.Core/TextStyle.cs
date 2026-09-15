@@ -34,6 +34,22 @@ public static class TextStyleCategoryExtensions
         TextStyleCategory.Encoding => "编码",
         _ => category.ToString(),
     };
+
+    /// <summary>分类名的双语显示（英文缺省回退中文表）。</summary>
+    public static string DisplayName(this TextStyleCategory category, AppLanguage lang) => lang switch
+    {
+        AppLanguage.English => category switch
+        {
+            TextStyleCategory.CjkEffect => "Effects",
+            TextStyleCategory.LatinFancy => "Latin Fancy",
+            TextStyleCategory.Decoration => "Decoration",
+            TextStyleCategory.Transform => "Transform",
+            TextStyleCategory.Chinese => "Chinese",
+            TextStyleCategory.Encoding => "Encoding",
+            _ => category.ToString(),
+        },
+        _ => category.DisplayName(),
+    };
 }
 
 /// <summary>一个可用的文字样式 = 元数据 + 转换函数。</summary>
@@ -45,6 +61,9 @@ public sealed record TextStyle
     /// <summary>显示名（中文优先，可带英文别名）。</summary>
     public required string Name { get; init; }
 
+    /// <summary>英文显示名（内置样式由 StyleEnglish 表按 ID 补丁，包样式来自 nameEn 字段；空则回退 Name）。</summary>
+    public string? NameEn { get; init; }
+
     public required TextStyleCategory Category { get; init; }
 
     /// <summary>纯函数：输入原文，输出转换结果。不得抛异常（内部自行兜底）。</summary>
@@ -52,6 +71,17 @@ public sealed record TextStyle
 
     /// <summary>机制说明（码点/来源），显示在详情页。</summary>
     public string? Note { get; init; }
+
+    /// <summary>机制说明英文版；空则回退 Note。</summary>
+    public string? NoteEn { get; init; }
+
+    /// <summary>按语言取显示名（英文缺失回退中文）。</summary>
+    public string GetName(AppLanguage lang) =>
+        lang == AppLanguage.English && !string.IsNullOrEmpty(NameEn) ? NameEn : Name;
+
+    /// <summary>按语言取机制说明（英文缺失回退中文）。</summary>
+    public string? GetNote(AppLanguage lang) =>
+        lang == AppLanguage.English && !string.IsNullOrEmpty(NoteEn) ? NoteEn : Note;
 
     /// <summary>本样式的声明式定义（可序列化）。由 <see cref="StyleFactory.FromDefinition"/> 填充；Legacy 迁移副本为 null。</summary>
     public StyleDefinition? Definition { get; init; }

@@ -148,9 +148,19 @@ public static class StylePacks
                 Fail($"name 必须是 {MaxNameLength} 字符以内");
             }
 
+            if (style.NameEn is { Length: > MaxNameLength })
+            {
+                Fail($"nameEn 超过 {MaxNameLength} 字符");
+            }
+
             if (style.Note?.Length > MaxNoteLength)
             {
                 Fail($"note 超过 {MaxNoteLength} 字符");
+            }
+
+            if (style.NoteEn is { Length: > MaxNoteLength })
+            {
+                Fail($"noteEn 超过 {MaxNoteLength} 字符");
             }
 
             if (style.Steps is not { Count: > 0 })

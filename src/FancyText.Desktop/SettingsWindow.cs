@@ -4,7 +4,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using FancyText.Core;
 using FancyText.Desktop.Helpers;
+using CoreLocalization = FancyText.Core.Localization;
 
 namespace FancyText.Desktop;
 
@@ -31,6 +33,7 @@ internal sealed class SettingsWindow : Window
     private readonly MainWindow _main;
     private DesktopSettings _settings;      // 工作副本：改动即 Save + 应用
     private Theme _theme;
+    private AppLanguage _lang;              // UI 构建时求值；语言切换后 BuildContent 重建刷新
 
     private bool _recordingHotkey;
     private TextBlock _hotkeyHint = new();
@@ -43,8 +46,9 @@ internal sealed class SettingsWindow : Window
         _main = main;
         _settings = main.CurrentSettings;
         _theme = main.CurrentTheme;
+        _lang = CoreLocalization.Resolve(main.Usage.Language);
 
-        Title = "设置 · 花式文字";
+        Title = Loc.S(_lang, "设置 · 花式文字", "Settings · Fancy Text");
         Width = 470;
         SizeToContent = SizeToContent.Height;
         MinWidth = 430;
@@ -59,43 +63,50 @@ internal sealed class SettingsWindow : Window
     private void BuildContent()
     {
         _recordingHotkey = false;
+        _lang = CoreLocalization.Resolve(_main.Usage.Language);
+        Title = Loc.S(_lang, "设置 · 花式文字", "Settings · Fancy Text"); // 语言切换重建时随动
         Background = _theme.WindowBackground;
         Foreground = _theme.Text;
+        var lang = _lang;
 
         var root = new StackPanel { Margin = new Thickness(24, 18, 24, 20) };
 
         // —— 个性化 ——
-        root.Children.Add(MakeGroupHeader("个性化"));
-        root.Children.Add(MakeRow("主题", MakeThemeCombo()));
-        root.Children.Add(MakeRow("强调色", MakeAccentPanel()));
-        root.Children.Add(MakeRow("预览字号", MakePreviewSizeCombo()));
+        root.Children.Add(MakeGroupHeader(Loc.S(lang, "个性化", "Personalization")));
+        root.Children.Add(MakeRow(Loc.S(lang, "语言", "Language"), MakeLanguageCombo()));
+        root.Children.Add(MakeRow(Loc.S(lang, "主题", "Theme"), MakeThemeCombo()));
+        root.Children.Add(MakeRow(Loc.S(lang, "强调色", "Accent color"), MakeAccentPanel()));
+        root.Children.Add(MakeRow(Loc.S(lang, "预览字号", "Preview size"), MakePreviewSizeCombo()));
 
         root.Children.Add(MakeSeparator());
 
         // —— 快捷键 ——
-        root.Children.Add(MakeGroupHeader("快捷键"));
+        root.Children.Add(MakeGroupHeader(Loc.S(lang, "快捷键", "Hotkey")));
         root.Children.Add(MakeHotkeyRow());
 
         root.Children.Add(MakeSeparator());
 
         // —— 行为 ——
-        root.Children.Add(MakeGroupHeader("行为"));
-        root.Children.Add(MakeRow("开机自启动", MakeToggle(nameof(_settings.LaunchAtLogin), _settings.LaunchAtLogin, ApplyLaunchAtLogin)));
-        root.Children.Add(MakeRow("唤出时预填剪贴板文字", MakeToggle(nameof(_settings.PrefillClipboard), _settings.PrefillClipboard, v => Save(_settings with { PrefillClipboard = v }))));
-        root.Children.Add(MakeRow("复制后收起窗口", MakeToggle(nameof(_settings.HideAfterCopy), _settings.HideAfterCopy, v => Save(_settings with { HideAfterCopy = v }))));
-        root.Children.Add(MakeRow("弹窗位置", MakePositionCombo()));
+        root.Children.Add(MakeGroupHeader(Loc.S(lang, "行为", "Behavior")));
+        root.Children.Add(MakeRow(Loc.S(lang, "开机自启动", "Launch at login"),
+            MakeToggle(nameof(_settings.LaunchAtLogin), _settings.LaunchAtLogin, ApplyLaunchAtLogin)));
+        root.Children.Add(MakeRow(Loc.S(lang, "唤出时预填剪贴板文字", "Prefill from clipboard"),
+            MakeToggle(nameof(_settings.PrefillClipboard), _settings.PrefillClipboard, v => Save(_settings with { PrefillClipboard = v }))));
+        root.Children.Add(MakeRow(Loc.S(lang, "复制后收起窗口", "Hide after copying"),
+            MakeToggle(nameof(_settings.HideAfterCopy), _settings.HideAfterCopy, v => Save(_settings with { HideAfterCopy = v }))));
+        root.Children.Add(MakeRow(Loc.S(lang, "弹窗位置", "Popup position"), MakePositionCombo()));
 
         root.Children.Add(MakeSeparator());
 
         // —— 样式包 ——
-        root.Children.Add(MakeGroupHeader("样式包"));
+        root.Children.Add(MakeGroupHeader(Loc.S(lang, "样式包", "Style Packs")));
         root.Children.Add(MakeStylePacksPanel());
 
         root.Children.Add(MakeSeparator());
 
         // —— 关于 ——
-        root.Children.Add(MakeGroupHeader("关于"));
-        root.Children.Add(MakeRow("版本", MakeMetaText(AppVersion)));
+        root.Children.Add(MakeGroupHeader(Loc.S(lang, "关于", "About")));
+        root.Children.Add(MakeRow(Loc.S(lang, "版本", "Version"), MakeMetaText(AppVersion)));
         root.Children.Add(MakeAboutRow());
 
         var scroll = new ScrollViewer
@@ -153,12 +164,37 @@ internal sealed class SettingsWindow : Window
         combo.Margin = new Thickness(0);
     }
 
+    /// <summary>语言下拉：中文 / English / 跟随系统。默认中文（与本地化前版本一致）；切换写入共享 state.json，三端一致。</summary>
+    private ComboBox MakeLanguageCombo()
+    {
+        var combo = new ComboBox { Width = 150, FontSize = 12.5, HorizontalAlignment = HorizontalAlignment.Right };
+        combo.Items.Add("中文");
+        combo.Items.Add("English");
+        combo.Items.Add(Loc.S(_lang, "跟随系统", "System default"));
+        combo.SelectedIndex = _main.Usage.Language switch
+        {
+            "en" => 1,
+            "auto" => 2,
+            _ => 0,
+        };
+        StyleCombo(combo);
+        combo.SelectionChanged += (_, _) =>
+        {
+            var stored = combo.SelectedIndex switch { 1 => "en", 2 => "auto", _ => "zh" };
+            _main.Usage.SetLanguage(stored);
+            // 与 retheme 同理：事件处理器内替换自身控件树有重入风险，延迟到空闲；主弹窗即时重建
+            Dispatcher.BeginInvoke(BuildContent);
+            _main.ApplyLanguage();
+        };
+        return combo;
+    }
+
     private ComboBox MakeThemeCombo()
     {
         var combo = new ComboBox { Width = 150, FontSize = 12.5, HorizontalAlignment = HorizontalAlignment.Right };
-        combo.Items.Add("浅色");
-        combo.Items.Add("深色");
-        combo.Items.Add("跟随系统");
+        combo.Items.Add(Loc.S(_lang, "浅色", "Light"));
+        combo.Items.Add(Loc.S(_lang, "深色", "Dark"));
+        combo.Items.Add(Loc.S(_lang, "跟随系统", "System"));
         combo.SelectedIndex = _settings.Theme switch
         {
             "dark" => 1,
@@ -177,9 +213,9 @@ internal sealed class SettingsWindow : Window
     private ComboBox MakePreviewSizeCombo()
     {
         var combo = new ComboBox { Width = 150, FontSize = 12.5, HorizontalAlignment = HorizontalAlignment.Right };
-        combo.Items.Add("小");
-        combo.Items.Add("中");
-        combo.Items.Add("大");
+        combo.Items.Add(Loc.S(_lang, "小", "Small"));
+        combo.Items.Add(Loc.S(_lang, "中", "Medium"));
+        combo.Items.Add(Loc.S(_lang, "大", "Large"));
         combo.SelectedIndex = _settings.PreviewSize switch
         {
             "small" => 0,
@@ -197,8 +233,8 @@ internal sealed class SettingsWindow : Window
     private ComboBox MakePositionCombo()
     {
         var combo = new ComboBox { Width = 150, FontSize = 12.5, HorizontalAlignment = HorizontalAlignment.Right };
-        combo.Items.Add("鼠标所在屏幕");
-        combo.Items.Add("主屏幕居中");
+        combo.Items.Add(Loc.S(_lang, "鼠标所在屏幕", "Screen at cursor"));
+        combo.Items.Add(Loc.S(_lang, "主屏幕居中", "Centered on primary"));
         combo.SelectedIndex = _settings.PopupPosition == "primary" ? 1 : 0;
         StyleCombo(combo);
         combo.SelectionChanged += (_, _) =>
@@ -278,7 +314,7 @@ internal sealed class SettingsWindow : Window
         };
         var applyBtn = new Button
         {
-            Content = "应用",
+            Content = Loc.S(_lang, "应用", "Apply"),
             FontSize = 12,
             Padding = new Thickness(10, 3, 10, 3),
             Margin = new Thickness(6, 0, 0, 0),
@@ -296,7 +332,7 @@ internal sealed class SettingsWindow : Window
             }
             else
             {
-                hexHint.Text = "格式：#RRGGBB";
+                hexHint.Text = Loc.S(_lang, "格式：#RRGGBB", "Format: #RRGGBB");
                 hexBox.BorderBrush = Frozen(0xD1, 0x3B, 0x3B);
             }
         };
@@ -330,9 +366,9 @@ internal sealed class SettingsWindow : Window
         _hotkeyPill.Click += (_, _) =>
         {
             _recordingHotkey = true;
-            _hotkeyPill.Content = "按下组合键…";
+            _hotkeyPill.Content = Loc.S(_lang, "按下组合键…", "Press a key combo…");
             _hotkeyPill.FontWeight = FontWeights.SemiBold;
-            _hotkeyHint.Text = "Esc 取消";
+            _hotkeyHint.Text = Loc.S(_lang, "Esc 取消", "Esc to cancel");
             _hotkeyHint.Foreground = _theme.Meta;
         };
 
@@ -367,7 +403,7 @@ internal sealed class SettingsWindow : Window
         };
         var button = new Button
         {
-            Content = "打开文件夹",
+            Content = Loc.S(_lang, "打开文件夹", "Open folder"),
             FontSize = 12,
             Padding = new Thickness(10, 3, 10, 3),
             Margin = new Thickness(8, 0, 0, 0),
@@ -406,7 +442,7 @@ internal sealed class SettingsWindow : Window
     {
         var importBtn = new Button
         {
-            Content = "导入样式包…",
+            Content = Loc.S(_lang, "导入样式包…", "Import pack…"),
             FontSize = 12,
             Padding = new Thickness(10, 3, 10, 3),
             Cursor = Cursors.Hand,
@@ -416,7 +452,7 @@ internal sealed class SettingsWindow : Window
 
         var exportBtn = new Button
         {
-            Content = "导出收藏为包…",
+            Content = Loc.S(_lang, "导出收藏为包…", "Export pinned…"),
             FontSize = 12,
             Padding = new Thickness(10, 3, 10, 3),
             Margin = new Thickness(8, 0, 0, 0),
@@ -466,7 +502,9 @@ internal sealed class SettingsWindow : Window
         {
             _packsList.Children.Add(new TextBlock
             {
-                Text = $"尚未安装样式包——把别人分享的 .json 放进 {FancyText.Core.StylePacks.DefaultPacksDirectory} 也行",
+                Text = Loc.S(_lang,
+                    $"尚未安装样式包——把别人分享的 .json 放进 {FancyText.Core.StylePacks.DefaultPacksDirectory} 也行",
+                    $"No style packs installed — dropping a shared .json into {FancyText.Core.StylePacks.DefaultPacksDirectory} also works"),
                 FontSize = 10.5,
                 Foreground = _theme.Meta,
                 Opacity = 0.8,
@@ -478,8 +516,8 @@ internal sealed class SettingsWindow : Window
         foreach (var pack in packs)
         {
             var label = pack.Error is null
-                ? $"{pack.PackName}（{pack.Styles.Count} 个样式）"
-                : $"{Path.GetFileName(pack.FilePath)}（损坏：{pack.Error}）";
+                ? Loc.S(_lang, $"{pack.PackName}（{pack.Styles.Count} 个样式）", $"{pack.PackName} ({pack.Styles.Count} styles)")
+                : Loc.S(_lang, $"{Path.GetFileName(pack.FilePath)}（损坏：{pack.Error}）", $"{Path.GetFileName(pack.FilePath)} (broken: {pack.Error})");
             var text = new TextBlock
             {
                 Text = label,
@@ -492,7 +530,7 @@ internal sealed class SettingsWindow : Window
 
             var removeBtn = new Button
             {
-                Content = "卸载",
+                Content = Loc.S(_lang, "卸载", "Remove"),
                 FontSize = 11,
                 Padding = new Thickness(8, 2, 8, 2),
                 Cursor = Cursors.Hand,
@@ -502,7 +540,7 @@ internal sealed class SettingsWindow : Window
             {
                 if (FancyText.Core.StylePacks.Remove(pack))
                 {
-                    ApplyPacksChanged($"已卸载 {pack.PackName}");
+                    ApplyPacksChanged(Loc.S(_lang, $"已卸载 {pack.PackName}", $"Removed {pack.PackName}"));
                 }
             };
             DockPanel.SetDock(removeBtn, Dock.Right);
@@ -518,8 +556,8 @@ internal sealed class SettingsWindow : Window
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "导入样式包",
-            Filter = "样式包 (*.json)|*.json|所有文件 (*.*)|*.*",
+            Title = Loc.S(_lang, "导入样式包", "Import style pack"),
+            Filter = Loc.S(_lang, "样式包 (*.json)|*.json|所有文件 (*.*)|*.*", "Style pack (*.json)|*.json|All files (*.*)|*.*"),
         };
         if (dialog.ShowDialog(this) != true)
         {
@@ -529,11 +567,11 @@ internal sealed class SettingsWindow : Window
         var result = FancyText.Core.StylePacks.Import(dialog.FileName);
         if (!result.Success)
         {
-            ShowPackError($"导入失败：{string.Join("\n", result.Errors)}");
+            ShowPackError(Loc.S(_lang, $"导入失败：{string.Join("\n", result.Errors)}", $"Import failed: {string.Join("\n", result.Errors)}"));
             return;
         }
 
-        ApplyPacksChanged($"已导入 ✓（命令面板插件需重启后生效）");
+        ApplyPacksChanged(Loc.S(_lang, "已导入 ✓（命令面板插件需重启后生效）", "Imported ✓ (Command Palette extension picks it up after restart)"));
     }
 
     private void OnExportPinnedPack()
@@ -541,15 +579,15 @@ internal sealed class SettingsWindow : Window
         var pinned = _main.PinnedStyles;
         if (pinned.Count == 0)
         {
-            ShowPackError("还没有收藏任何样式——在列表里按 Ctrl+D 收藏后再导出");
+            ShowPackError(Loc.S(_lang, "还没有收藏任何样式——在列表里按 Ctrl+D 收藏后再导出", "Nothing pinned yet — press Ctrl+D in the list to pin styles first"));
             return;
         }
 
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
-            Title = "导出收藏为样式包",
-            Filter = "样式包 (*.json)|*.json",
-            FileName = "我的收藏.json",
+            Title = Loc.S(_lang, "导出收藏为样式包", "Export pinned as style pack"),
+            Filter = Loc.S(_lang, "样式包 (*.json)|*.json", "Style pack (*.json)|*.json"),
+            FileName = Loc.S(_lang, "我的收藏.json", "My-pinned.json"),
         };
         if (dialog.ShowDialog(this) != true)
         {
@@ -564,12 +602,14 @@ internal sealed class SettingsWindow : Window
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            ShowPackError($"导出失败：{ex.Message}");
+            ShowPackError(Loc.S(_lang, $"导出失败：{ex.Message}", $"Export failed: {ex.Message}"));
             return;
         }
 
         _packStatus.Foreground = _theme.Primary;
-        _packStatus.Text = $"已导出 {pinned.Count} 个收藏样式 ✓ 发送这个文件即可分享";
+        _packStatus.Text = Loc.S(_lang,
+            $"已导出 {pinned.Count} 个收藏样式 ✓ 发送这个文件即可分享",
+            $"Exported {pinned.Count} pinned styles ✓ share this file");
     }
 
     /// <summary>包目录变动后的统一收尾：重载目录 + 刷新主窗口 + 重画已装包列表。</summary>
@@ -616,7 +656,7 @@ internal sealed class SettingsWindow : Window
         if (modifiers == ModifierKeys.None)
         {
             _hotkeyHint.Foreground = Frozen(0xD1, 0x3B, 0x3B);
-            _hotkeyHint.Text = "需包含 Ctrl / Alt / Shift / Win 中至少一个";
+            _hotkeyHint.Text = Loc.S(_lang, "需包含 Ctrl / Alt / Shift / Win 中至少一个", "Include at least one of Ctrl / Alt / Shift / Win");
             return;
         }
 
@@ -624,7 +664,7 @@ internal sealed class SettingsWindow : Window
         if (DesktopSettings.ParseHotkey(display) is not { } binding)
         {
             _hotkeyHint.Foreground = Frozen(0xD1, 0x3B, 0x3B);
-            _hotkeyHint.Text = "该组合不可用，换一个试试";
+            _hotkeyHint.Text = Loc.S(_lang, "该组合不可用，换一个试试", "That combo is unavailable, try another");
             return;
         }
 
@@ -635,12 +675,14 @@ internal sealed class SettingsWindow : Window
             _hotkeyPill.Content = display;
             _hotkeyPill.FontWeight = FontWeights.Normal;
             _hotkeyHint.Foreground = _theme.Primary;
-            _hotkeyHint.Text = "已生效";
+            _hotkeyHint.Text = Loc.S(_lang, "已生效", "Applied");
         }
         else
         {
             _hotkeyHint.Foreground = Frozen(0xD1, 0x3B, 0x3B);
-            _hotkeyHint.Text = $"组合键已被其他程序占用，保留原热键 {_main.HotkeyDisplay}";
+            _hotkeyHint.Text = Loc.S(_lang,
+                $"组合键已被其他程序占用，保留原热键 {_main.HotkeyDisplay}",
+                $"Combo already taken by another app; keeping {_main.HotkeyDisplay}");
             _hotkeyPill.Content = _main.HotkeyDisplay; // 录制态文字复原
             _hotkeyPill.FontWeight = FontWeights.Normal;
             _recordingHotkey = false;

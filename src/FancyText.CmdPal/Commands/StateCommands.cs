@@ -30,10 +30,13 @@ internal sealed partial class GoToCategoryCommand : InvokableCommand
 {
     private readonly string _pageId;
 
-    public GoToCategoryCommand(TextStyleCategory? category, string categoryName)
+    public GoToCategoryCommand(TextStyleCategory? category, AppLanguage lang)
     {
         _pageId = Pages.FancyTextStylesPage.PageIdFor(category);
-        Name = $"打开「{categoryName}」分类";
+        var displayName = category is { } c
+            ? c.DisplayName(lang)
+            : Loc.S(lang, "全部样式", "All styles");
+        Name = Loc.S(lang, $"打开「{displayName}」分类", $"Open {displayName}");
         Icon = new IconInfo("\uE8C8");
     }
 

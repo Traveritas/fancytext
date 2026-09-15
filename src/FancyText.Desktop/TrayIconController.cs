@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using FancyText.Core;
 using FancyText.Desktop.Helpers;
 
 using WinForms = System.Windows.Forms;
@@ -24,31 +25,45 @@ internal sealed class TrayIconController : IDisposable
         _icon = CreateIcon();
         _iconHandle = _icon.Handle;
 
-        var openItem = new WinForms.ToolStripMenuItem("打开(&O)");
+        var lang = _window.Lang;
+        var openItem = new WinForms.ToolStripMenuItem(Loc.S(lang, "打开(&O)", "&Open"));
         openItem.Click += (_, _) => _window.ShowPopup();
 
-        var settingsItem = new WinForms.ToolStripMenuItem("设置(&S)…");
+        var settingsItem = new WinForms.ToolStripMenuItem(Loc.S(lang, "设置(&S)…", "&Settings…"));
         settingsItem.Click += (_, _) => openSettings();
 
-        var exitItem = new WinForms.ToolStripMenuItem("退出(&X)");
+        var exitItem = new WinForms.ToolStripMenuItem(Loc.S(lang, "退出(&X)", "E&xit"));
         exitItem.Click += (_, _) => System.Windows.Application.Current.Shutdown();
 
         _menu.Items.Add(openItem);
         _menu.Items.Add(settingsItem);
         _menu.Items.Add(new WinForms.ToolStripSeparator());
         _menu.Items.Add(exitItem);
-        _menu.Opening += (_, _) => UpdateTooltip(); // 热键换绑后提示文字随下次打开刷新
+        // 打开菜单时按当前语言刷新全部文案（热键换绑/语言切换后随下次打开生效，零重建链路）
+        _menu.Opening += (_, _) => RefreshTexts();
 
         _notifyIcon.Icon = _icon;
-        _notifyIcon.Text = "花式文字";
+        _notifyIcon.Text = AppName();
         _notifyIcon.ContextMenuStrip = _menu;
         _notifyIcon.Visible = true;
         _notifyIcon.DoubleClick += (_, _) => _window.ShowPopup();
         UpdateTooltip();
     }
 
-    /// <summary>tooltip 有 63 字符上限，超长会被截断，这里固定短格式。</summary>
-    private void UpdateTooltip() => _notifyIcon.Text = $"花式文字 · {_window.HotkeyDisplay} 唤出";
+    private static string AppName() => "FancyText";
+
+    /// <summary>菜单与 tooltip 按当前语言刷新（tooltip 有 63 字符上限，固定短格式）。</summary>
+    private void RefreshTexts()
+    {
+        var lang = _window.Lang;
+        _menu.Items[0].Text = Loc.S(lang, "打开(&O)", "&Open");
+        _menu.Items[1].Text = Loc.S(lang, "设置(&S)…", "&Settings…");
+        _menu.Items[3].Text = Loc.S(lang, "退出(&X)", "E&xit");
+        UpdateTooltip();
+    }
+
+    private void UpdateTooltip() => _notifyIcon.Text =
+        Loc.S(_window.Lang, $"花式文字 · {_window.HotkeyDisplay} 唤出", $"Fancy Text · {_window.HotkeyDisplay} to open");
 
     /// <summary>图标用代码画：主色方块 + 白色「花」字，免去资源文件。</summary>
     private static Icon CreateIcon()

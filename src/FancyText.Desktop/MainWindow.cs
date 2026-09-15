@@ -12,6 +12,7 @@ using System.Windows.Threading;
 using FancyText.Core;
 using FancyText.Desktop.Helpers;
 using FancyText.Desktop.Models;
+using CoreLocalization = FancyText.Core.Localization;
 
 using WinForms = System.Windows.Forms;
 
@@ -81,7 +82,7 @@ internal sealed class MainWindow : Window
         _trimTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
         _trimTimer.Tick += (_, _) => { _trimTimer.Stop(); TrimWorkingSet(); };
 
-        Title = "花式文字";
+        Title = Loc.S(Lang, "花式文字", "Fancy Text");
         Width = 540;
         Height = 640;
         MinWidth = 380;
@@ -191,6 +192,8 @@ internal sealed class MainWindow : Window
     /// </summary>
     private void BuildUi()
     {
+        Title = Loc.S(Lang, "花式文字", "Fancy Text"); // 语言切换重建时随动（构造器里已设过一次）
+
         // 标题栏：无文字，纯隐形拖动条（按住空白处拖动窗口）
         var header = new DockPanel
         {
@@ -241,7 +244,8 @@ internal sealed class MainWindow : Window
 
         // 分类筛选：全部 / 收藏 / 最近 / 六个分类，胶囊形单选组
         var filterPanel = new WrapPanel { Margin = new Thickness(12, 0, 12, 4) };
-        var options = FilterOption.Catalog().ToArray();
+        var lang = Lang;
+        var options = FilterOption.Catalog(lang).ToArray();
         for (var i = 0; i < options.Length; i++)
         {
             var chip = new RadioButton
@@ -269,7 +273,14 @@ internal sealed class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
         };
         var hints = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        foreach (var (key, action) in new[] { ("Enter", "复制"), ("Ctrl+D", "收藏"), ("Ctrl+R", "随机"), ("Esc", "收起") })
+        var hintPairs = new[]
+        {
+            ("Enter", Loc.S(lang, "复制", "Copy")),
+            ("Ctrl+D", Loc.S(lang, "收藏", "Pin")),
+            ("Ctrl+R", Loc.S(lang, "随机", "Random")),
+            ("Esc", Loc.S(lang, "收起", "Hide")),
+        };
+        foreach (var (key, action) in hintPairs)
         {
             if (hints.Children.Count > 0)
             {
@@ -336,10 +347,17 @@ internal sealed class MainWindow : Window
         Content = card;
     }
 
-    /// <summary>
-    /// 设置页回调：整体应用新设置（主题/预览字号等）。重建 UI 前保留输入与筛选，
-    /// 重建后恢复输入并刷新列表——对用户而言即"即时生效"。
-    /// </summary>
+    /// <summary>当前界面语言：跟随共享 UsageState（设置页切换、state.json 三端共享），UI 构建时求值。</summary>
+    internal AppLanguage Lang => CoreLocalization.Resolve(_usage.Language);
+
+    /// <summary>共享使用状态（设置页读写语言偏好用）。</summary>
+    internal UsageState Usage => _usage;
+
+    /// <summary>语言偏好变化（设置页切换）：整体重建 UI。复用设置应用链路（同设置重建，主题值不变无副作用）。</summary>
+    internal void ApplyLanguage() => ApplySettings(_settings);
+
+    /// <summary>设置页回调：整体应用新设置（主题/预览字号等）。重建 UI 前保留输入与筛选，
+    /// 重建后恢复输入并刷新列表——对用户而言即"即时生效"。</summary>
     internal void ApplySettings(DesktopSettings settings)
     {
         _settings = settings;
@@ -406,19 +424,24 @@ internal sealed class MainWindow : Window
         return style;
     }
 
-    /// <summary>筛选项：全部 / 收藏 / 最近 / 一个具体分类。</summary>
+    /// <summary>筛选项：全部 / 收藏 / 最近 / 一个具体分类。相等性只看语义键（语言切换重建胶囊后选中态不丢）。</summary>
     private sealed record FilterOption(string Label, TextStyleCategory? Category = null, bool Pinned = false, bool Recent = false)
     {
         public static FilterOption All { get; } = new("全部");
 
         /// <summary>全部 → 收藏 → 最近 → 六个分类（枚举声明顺序），即工具栏顺序。</summary>
-        public static IEnumerable<FilterOption> Catalog() =>
+        public static IEnumerable<FilterOption> Catalog(AppLanguage lang) =>
         [
-            All,
-            new FilterOption("收藏", Pinned: true),
-            new FilterOption("最近", Recent: true),
-            .. Enum.GetValues<TextStyleCategory>().Select(c => new FilterOption(c.DisplayName(), c)),
+            new FilterOption(Loc.S(lang, "全部", "All")),
+            new FilterOption(Loc.S(lang, "收藏", "Pinned"), Pinned: true),
+            new FilterOption(Loc.S(lang, "最近", "Recent"), Recent: true),
+            .. Enum.GetValues<TextStyleCategory>().Select(c => new FilterOption(c.DisplayName(lang), c)),
         ];
+
+        public bool Equals(FilterOption? other) =>
+            other is not null && Category == other.Category && Pinned == other.Pinned && Recent == other.Recent;
+
+        public override int GetHashCode() => HashCode.Combine(Category, Pinned, Recent);
     }
 
     /// <summary>胶囊形单选按钮模板：选中=主色底白字，悬停=浅紫。触发器后声明者优先，故悬停在前、选中在后。</summary>
@@ -824,12 +847,12 @@ internal sealed class MainWindow : Window
             items.Add(new StyleListItem
             {
                 StyleId = style.Id,
-                Name = style.Name,
+                Name = style.GetName(Lang),
                 PreviewText = OneLine(preview),
                 IsPinned = _usage.IsPinned(style.Id),
                 CategoryName = style.Source is StyleSource.Pack { PackName: var pack }
-                    ? $"{style.Category.DisplayName()} · {pack}"
-                    : style.Category.DisplayName(),
+                    ? $"{style.Category.DisplayName(Lang)} · {pack}"
+                    : style.Category.DisplayName(Lang),
             });
         }
 
@@ -844,8 +867,9 @@ internal sealed class MainWindow : Window
         }
 
         var truncated = !string.Equals(previewInput, text, StringComparison.Ordinal);
-        _statusCount.Text = $"{items.Count} 个可用样式"
-            + (truncated ? $" · 预览仅前 {PreviewMaxGraphemes} 字，回车复制完整结果" : string.Empty);
+        _statusCount.Text = Loc.S(Lang,
+            $"{items.Count} 个可用样式" + (truncated ? $" · 预览仅前 {PreviewMaxGraphemes} 字，回车复制完整结果" : string.Empty),
+            $"{items.Count} styles" + (truncated ? $" · preview shows first {PreviewMaxGraphemes} graphemes; Enter copies the full result" : string.Empty));
     }
 
     private IEnumerable<TextStyle> StylesForFilter(FilterOption filter)
@@ -957,7 +981,7 @@ internal sealed class MainWindow : Window
 
         if (string.IsNullOrEmpty(result) || !TryCopyToClipboard(result))
         {
-            _statusCount.Text = "剪贴板写入失败，可再按 Enter 重试";
+            _statusCount.Text = Loc.S(Lang, "剪贴板写入失败，可再按 Enter 重试", "Clipboard write failed; press Enter to retry");
             return false; // 复制失败保持窗口打开，便于重试
         }
 
@@ -968,7 +992,7 @@ internal sealed class MainWindow : Window
         }
         else
         {
-            _statusCount.Text = "已复制 ✓ 可继续换样式（Enter 重复制）";
+            _statusCount.Text = Loc.S(Lang, "已复制 ✓ 可继续换样式（Enter 重复制）", "Copied ✓ pick another style (Enter to copy again)");
         }
 
         return true;
