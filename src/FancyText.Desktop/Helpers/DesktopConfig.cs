@@ -21,7 +21,7 @@ internal readonly record struct HotkeyBinding(uint Modifiers, Key Key, string Di
 internal sealed record DesktopSettings
 {
     public string Hotkey { get; init; } = HotkeyBinding.DefaultDisplay;
-    public string Accent { get; init; } = "#6352DC";   // 强调色 #RRGGBB
+    public string Accent { get; init; } = "#6352DC";   // 强调色 #RRGGBB；"auto" = 跟随系统强调色
     public string Theme { get; init; } = "light";       // light | dark | system
     public string PreviewSize { get; init; } = "medium"; // small | medium | large
     public bool LaunchAtLogin { get; init; }
@@ -68,10 +68,13 @@ internal sealed record DesktopSettings
                 }
 
                 if (root.TryGetProperty("accent", out var accent) &&
-                    accent.ValueKind == JsonValueKind.String &&
-                    TryParseColor(accent.GetString(), out _, out _, out _))
+                    accent.ValueKind == JsonValueKind.String)
                 {
-                    s = s with { Accent = accent.GetString()!.Trim().ToUpperInvariant() };
+                    var text = accent.GetString()!;
+                    if (text is "auto" || TryParseColor(text, out _, out _, out _))
+                    {
+                        s = s with { Accent = text.Trim().ToUpperInvariant() };
+                    }
                 }
 
                 s = ReadString(root, s, "theme", v => v is "light" or "dark" or "system");

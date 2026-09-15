@@ -267,7 +267,7 @@ internal sealed class SettingsWindow : Window
         button.BorderThickness = new Thickness(1);
     }
 
-    /// <summary>强调色面板：8 个预设圆点 + 自定义十六进制输入。</summary>
+    /// <summary>强调色面板：「跟随系统」胶囊 + 8 个预设圆点 + 自定义十六进制输入。</summary>
     private StackPanel MakeAccentPanel()
     {
         var panel = new StackPanel
@@ -277,6 +277,49 @@ internal sealed class SettingsWindow : Window
         };
 
         var swatches = new StackPanel { Orientation = Orientation.Horizontal };
+
+        // 跟随系统：胶囊按钮显示当前系统强调色的小色块，选中（Accent=auto）时描边
+        var isAuto = string.Equals(_settings.Accent, "auto", StringComparison.OrdinalIgnoreCase);
+        var autoChip = new Border
+        {
+            CornerRadius = new CornerRadius(11),
+            BorderThickness = new Thickness(1),
+            BorderBrush = isAuto ? _theme.Text : _theme.KeycapBorder,
+            Background = _theme.KeycapBackground,
+            Padding = new Thickness(9, 3, 9, 3),
+            Margin = new Thickness(0, 0, 8, 0),
+            Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = Loc.S(_lang, "使用 Windows 系统强调色（设置 → 个性化 → 颜色），系统改色后自动跟随", "Uses the Windows system accent color (Settings → Personalization → Color); follows system changes"),
+        };
+        var autoDot = new Border
+        {
+            Width = 12,
+            Height = 12,
+            CornerRadius = new CornerRadius(6),
+            Background = new SolidColorBrush(ParseColor("#6352DC")),
+            Margin = new Thickness(0, 0, 5, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        if (Helpers.SystemAccent.TryGet() is { } accent)
+        {
+            autoDot.Background = new SolidColorBrush(Color.FromRgb(accent.R, accent.G, accent.B));
+        }
+
+        var autoLabel = new TextBlock
+        {
+            Text = Loc.S(_lang, "跟随系统", "System"),
+            FontSize = 11,
+            Foreground = _theme.Text,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var autoRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        autoRow.Children.Add(autoDot);
+        autoRow.Children.Add(autoLabel);
+        autoChip.Child = autoRow;
+        autoChip.MouseLeftButtonUp += (_, _) => Save(_settings with { Accent = "auto" }, retheme: true);
+        swatches.Children.Add(autoChip);
+
         foreach (var hex in AccentPresets)
         {
             var hexCapture = hex;
@@ -289,7 +332,7 @@ internal sealed class SettingsWindow : Window
                 Margin = new Thickness(0, 0, 8, 0),
                 Cursor = Cursors.Hand,
                 BorderThickness = new Thickness(2),
-                BorderBrush = string.Equals(_settings.Accent, hexCapture, StringComparison.OrdinalIgnoreCase)
+                BorderBrush = !isAuto && string.Equals(_settings.Accent, hexCapture, StringComparison.OrdinalIgnoreCase)
                     ? _theme.Text
                     : Brushes.Transparent,
                 ToolTip = hexCapture,
@@ -303,14 +346,15 @@ internal sealed class SettingsWindow : Window
             Width = 90,
             FontSize = 12,
             Padding = new Thickness(6, 3, 6, 3),
-            Text = _settings.Accent,
+            Text = isAuto ? string.Empty : _settings.Accent,
+            IsReadOnly = isAuto, // 跟随系统时不接受手输，点色板或胶囊退出该模式
             VerticalAlignment = VerticalAlignment.Center,
         };
         var hexHint = new TextBlock
         {
-            Text = "",
+            Text = isAuto ? Loc.S(_lang, "跟随系统中 ✓", "Following system ✓") : "",
             FontSize = 10.5,
-            Foreground = _theme.Meta,
+            Foreground = _theme.Primary,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(6, 0, 0, 0),
         };

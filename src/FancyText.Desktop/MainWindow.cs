@@ -26,6 +26,7 @@ namespace FancyText.Desktop;
 internal sealed class MainWindow : Window
 {
     private const int WM_HOTKEY = 0x0312;
+    private const int WM_DWMCOLORIZATIONCOLORCHANGED = 0x0320;
     private const int WM_NCCALCSIZE = 0x0083;
     private const int HotkeyId = 0x4654; // "FT"，进程内唯一即可
     private const int PreviewMaxGraphemes = 64;
@@ -110,7 +111,7 @@ internal sealed class MainWindow : Window
         ApplySystemChrome();
     }
 
-    /// <summary>设置项 → 主题：system 模式读注册表 AppsUseLightTheme（读不到按浅色）。</summary>
+    /// <summary>设置项 → 主题：system 模式读注册表 AppsUseLightTheme（读不到按浅色）；accent=auto 读 DWM 系统强调色。</summary>
     private static Theme ResolveTheme(DesktopSettings settings)
     {
         var dark = settings.Theme switch
@@ -119,7 +120,12 @@ internal sealed class MainWindow : Window
             "system" => IsSystemDark(),
             _ => false,
         };
-        if (!DesktopSettings.TryParseColor(settings.Accent, out var r, out var g, out var b))
+        byte r, g, b;
+        if (string.Equals(settings.Accent, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            (r, g, b) = Helpers.SystemAccent.TryGet() ?? (0x63, 0x52, 0xDC);
+        }
+        else if (!DesktopSettings.TryParseColor(settings.Accent, out r, out g, out b))
         {
             (r, g, b) = (0x63, 0x52, 0xDC);
         }
@@ -1147,6 +1153,11 @@ internal sealed class MainWindow : Window
         {
             ShowPopup();
             handled = true;
+        }
+        else if (msg == WM_DWMCOLORIZATIONCOLORCHANGED && string.Equals(_settings.Accent, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            // 系统强调色变化（含"从壁纸自动取色"刷新）：跟随系统模式下即时换肤
+            ApplySettings(_settings);
         }
         else if (msg == WM_NCCALCSIZE && wParam.ToInt64() == 1)
         {
