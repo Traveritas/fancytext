@@ -38,6 +38,7 @@ public static class Program
         TestDeclarativeEquivalence();
         TestStylePacks();
         TestLocalization();
+        TestChineseStyles();
 
         Console.WriteLine();
         Console.WriteLine($"通过 {_passed} 项，失败 {_failed} 项");
@@ -632,6 +633,35 @@ public static class Program
             $$"""{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","nameEn":"{{tooLongEn}}","category":"encoding","steps":[{"op":"reverse"}]}]}""",
             "bad.json");
         Check(bad.Pack is null, "拦截：nameEn 超长");
+    }
+
+    /// <summary>中文四件套：简⇄繁（词级消歧核心断言）与拼音/拼音缩写。</summary>
+    private static void TestChineseStyles()
+    {
+        Console.WriteLine("中文扩充（简繁/拼音）：");
+        // 词级消歧是简→繁的命门：头发→頭髮（而非单字兜底的头發）、皇后不误转
+        Check(Find("simplified-to-traditional").Transform("头发") == "頭髮", "简→繁 词级消歧：头发→頭髮");
+        Check(Find("simplified-to-traditional").Transform("皇后") == "皇后", "简→繁 皇后不误转");
+        Check(Find("simplified-to-traditional").Transform("后来居上") == "後來居上", "简→繁 后来→後來");
+        Check(Find("simplified-to-traditional").Transform("发展") == "發展", "简→繁 发展→發展");
+        Check(Find("simplified-to-traditional").Transform("Hello 你好 123") == "Hello 你好 123", "简→繁 非汉字原样保留");
+        Check(Find("traditional-to-simplified").Transform("頭髮") == "头发", "繁→简 頭髮→头发");
+        Check(Find("traditional-to-simplified").Transform("電腦軟件") == "电脑软件", "繁→简 電腦軟件→电脑软件");
+        Check(Find("traditional-to-simplified").Transform("幹嘛") == "干嘛", "繁→简 幹嘛→干嘛");
+        Check(Find("simplified-to-traditional").Transform(
+            Find("traditional-to-simplified").Transform("一头黑发")) == "一頭黑髮", "繁简往返一致（一头黑发）");
+
+        // 拼音：带调、空格分词、非汉字保留；缩写体
+        Check(Find("pinyin").Transform("你好") == "nǐ hǎo", "拼音 你好→nǐ hǎo");
+        Check(Find("pinyin").Transform("中国") == "zhōng guó", "拼音 中国→zhōng guó");
+        Check(Find("pinyin").Transform("好abc") == "hǎo abc", "拼音 非汉字成词保留");
+        Check(Find("pinyin").Transform("123") == "123", "拼音 纯数字原样");
+        Check(Find("pinyin-abbr").Transform("你好吗") == "nhm", "拼音缩写 你好吗→nhm");
+        Check(Find("pinyin-abbr").Transform("打工人 Version 2") == "dgr Version 2", "拼音缩写 中英混排");
+
+        // 目录与英文层同步
+        Check(StyleCatalog.All.Count(s => s.Category == TextStyleCategory.Chinese) == 6, "中文分类共 6 个样式");
+        Check(Find("pinyin").NameEn == "Pinyin (toned) nǐ hǎo", "中文扩充英文层");
     }
 
     private static TextStyle Find(string id) =>

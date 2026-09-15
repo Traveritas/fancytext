@@ -56,4 +56,8 @@ public enum KnownAlgorithm
     Lowercase,
     AlternatingCase,
     StripCombiningMarks,
+    SimplifiedToTraditional,
+    TraditionalToSimplified,
+    Pinyin,
+    PinyinAbbr,
 }

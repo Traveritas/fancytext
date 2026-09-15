@@ -90,6 +90,8 @@ internal sealed class SettingsWindow : Window
         root.Children.Add(MakeGroupHeader(Loc.S(lang, "行为", "Behavior")));
         root.Children.Add(MakeRow(Loc.S(lang, "开机自启动", "Launch at login"),
             MakeToggle(nameof(_settings.LaunchAtLogin), _settings.LaunchAtLogin, ApplyLaunchAtLogin)));
+        root.Children.Add(MakeRow(Loc.S(lang, "唤出时预填选中文字", "Prefill selected text"),
+            MakeToggle(nameof(_settings.PrefillSelection), _settings.PrefillSelection, v => Save(_settings with { PrefillSelection = v }))));
         root.Children.Add(MakeRow(Loc.S(lang, "唤出时预填剪贴板文字", "Prefill from clipboard"),
             MakeToggle(nameof(_settings.PrefillClipboard), _settings.PrefillClipboard, v => Save(_settings with { PrefillClipboard = v }))));
         root.Children.Add(MakeRow(Loc.S(lang, "复制后收起窗口", "Hide after copying"),

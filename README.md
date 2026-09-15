@@ -1,6 +1,6 @@
 # 花式文字 for PowerToys Command Palette
 
-把剪贴板或输入的文字一键转换为 **菊花体、魔鬼文字（Zalgo）、花藤体、花体 𝓕𝓪𝓷𝓬𝔂、火星文** 等 **126 种**内置花式 Unicode 样式，回车即复制；支持**导入样式包**无限扩充。另附同引擎的命令行工具 `fancy`。
+把剪贴板或输入的文字一键转换为 **菊花体、魔鬼文字（Zalgo）、花藤体、花体 𝓕𝓪𝓷𝓬𝔂、火星文** 等 **130 种**内置花式 Unicode 样式（含简⇄繁、拼音），回车即复制；支持**导入样式包**无限扩充。另附同引擎的命令行工具 `fancy`。
 
 调研结论（同类插件不存在、全部样式来源与码点依据）见 [docs/01-调研报告-花式文字插件.md](docs/01-调研报告-花式文字插件.md)；独立工具形态分析见 [docs/02-独立工具探索.md](docs/02-独立工具探索.md)。
 
@@ -14,7 +14,8 @@
 - **回车复制**，Toast 反馈；右键有「复制并保持打开」「收藏」等命令。
 - **还原功能**：「变换」分类内置「还原（去装饰）」，可把被组合符装饰过的文字清洗回原文；「中文」分类有「火星文还原」。
 - **样式包**：别人整理好的样式合集（`.json`）一键导入（见下节），收藏也能导出成包分享。
-- **中英双语**：内置 126 个样式全部带英文名与英文说明；设置页 →「语言」切换（中文 / English / 跟随系统），桌面版即时生效，插件与 CLI 共享同一偏好（`state.json`），插件在面板进程重启后生效。样式包可带 `nameEn` / `noteEn` 双语字段。
+- **选中文字预填**：桌面版唤出时自动读取其它应用中选中的文字（UIA 只读，不动剪贴板；主流浏览器/Office/记事本/终端均支持），拿不到再回退剪贴板；设置页可关。
+- **中英双语**：内置 130 个样式全部带英文名与英文说明；设置页 →「语言」切换（中文 / English / 跟随系统），桌面版即时生效，插件与 CLI 共享同一偏好（`state.json`），插件在面板进程重启后生效。样式包可带 `nameEn` / `noteEn` 双语字段。
 
 ## 样式包：导入与分享
 
@@ -27,7 +28,7 @@
 - **安全校验**：ID 冲突（内置/其它包）拒绝导入；孤立代理对、控制字符、超限参数（映射条数/步骤数/文件大小 2MB）一律拦截。
 - 包格式与全部步骤写法（mapReplace / useMap / appendMark / wrapString / wrapEach / spacing / reverse / algorithm / ifChanged 守卫）见可直接导入体验的 [docs/sample-pack.json](docs/sample-pack.json)；样式可带可选 `nameEn` / `noteEn` 双语字段，英文名缺失时回退 `name`。
 
-### 样式分类（126 个）
+### 样式分类（130 个）
 
 | 分类 | 数量 | 代表样式 |
 |---|---|---|
@@ -35,7 +36,7 @@
 | 英文/字母花体（Unicode 区段映射） | 28 | 粗体/斜体/花体/哥特/空心/等宽/无衬线系、泡泡字、黑底圈字、方块字、括号字、旗帜字母、全角、小型大写、上下标、货币体、符号体、无衬线圈/双圈数字、俄化 |
 | 装饰（前后缀/逐字/分字） | 34 | 经典/华丽/精美/皇冠/典雅/钻石/双层/流光/柔光/神秘/藏文系翅膀、星光/花/闪耀边框、日式括号、分字空格、宽体 |
 | 变换 | 8 | 倒转 oʇʇǝ、镜像、倒序、Leet、全大写/全小写/交替大小写、还原（去装饰） |
-| 中文 | 2 | 火星文（2088 字字典）、火星文还原 |
+| 中文 | 6 | 火星文（2088 字字典）、火星文还原、简→繁 / 繁→简（OpenCC 词级消歧：头发→頭髮）、拼音（带调 nǐ hǎo）、拼音缩写（nhm） |
 | 编码 | 8 | Base64、ROT13、摩斯电码、盲文 ⠓⠑⠇⠇⠕、NATO、A1Z26、二进制、十六进制 |
 
 ## 设计理念：占用少、轻量化
@@ -90,7 +91,8 @@ src/FancyText.Core/        转换引擎（无 UI 依赖，CLI 与插件共用）
   ZalgoTransformer.cs      魔鬼文字（上/中/下三组组合符随机叠加，强度可调，可反向清洗）
   LatinMaps.cs             拉丁映射表（数学字母区段+洞字符、带圈/方块、全角、上下标、倒转/镜像、盲文…）
   MartianDictionary.cs     火星文字典加载（嵌入资源，Rune 对齐）
-  StyleCatalog.cs(.Expanded)  全部 126 个内置样式（声明式 StyleDefinition 定义）
+  StyleCatalog.cs(.Expanded)  全部 130 个内置样式（声明式 StyleDefinition 定义）
+  ChineseText.cs            简⇄繁（OpenCC 词级贪心最长匹配）与拼音转换；词典 gzip 嵌入、惰性加载（不用不占内存）
   StyleDefinition.cs       样式定义 DTO + StyleFactory（定义 → 可执行 TextStyle，含来源标记）
   TransformStep.cs         声明式步骤层次（查表/引用内置表/附加组合符/包围/分隔/倒序/算法/守卫）
   StyleInterpreter.cs      步骤管道 → 委托（构建期一次编译，运行时纯委托链）
@@ -101,6 +103,8 @@ src/FancyText.Core/        转换引擎（无 UI 依赖，CLI 与插件共用）
   KnownTransforms.cs       内置命名映射表与算法注册表（UseMap / Algorithm 的引用目标）
   EncodingTransforms.cs    NATO / A1Z26 / 二进制 / 十六进制 / 交替大小写
   Resources/spark-simple.json  cnchar 火星文字典（MIT）
+  Resources/opencc-*.txt.gz    OpenCC 简⇄繁词典（Apache-2.0，词级消歧）
+  Resources/pinyin.txt.gz      拼音数据（mozillazg/pinyin-data，MIT）
 src/FancyText.CmdPal/      Command Palette 扩展（WinUI3 / MSIX）
   Program.cs               COM 服务器入口
   FancyTextExtension.cs    IExtension 实现（Guid 与清单一致）
@@ -113,7 +117,7 @@ src/FancyText.CmdPal/      Command Palette 扩展（WinUI3 / MSIX）
   Helpers/UsageState.cs          收藏与最近使用（%LOCALAPPDATA%\FancyText\state.json）
 src/FancyText.Cli/         命令行工具 fancy（--list/--json/--random/单样式）
 src/FancyText.Desktop/     独立桌面版（WPF：全局热键 + 托盘 + 弹窗转换器，与插件共享收藏）
-tests/FancyText.Core.Tests/  自检测试（169 项断言）+ `-- demo`（效果预览）+ `-- bench`（性能基准）
+tests/FancyText.Core.Tests/  自检测试（205 项断言）+ `-- demo`（效果预览）+ `-- bench`（性能基准）
 reference/                 参考项目（ChangeCaseExtension、cnchar 克隆，仅研读，不参与构建）
 docs/                      调研报告、独立工具探索
 ```
@@ -140,7 +144,7 @@ docs/                      调研报告、独立工具探索
 - Windows 10 19041+（实际建议 Win11 + PowerToys ≥ 0.90）
 
 ```bash
-# 运行引擎测试（169 项断言，含样式包解析/校验/导入全链路）
+# 运行引擎测试（205 项断言，含样式包全链路与简繁词级消歧）
 dotnet run --project tests/FancyText.Core.Tests
 
 # 效果预览（不进 UI，直接打印全部样式的转换结果）
@@ -175,7 +179,7 @@ Export-PfxCertificate -Cert $cert -FilePath src\FancyText.CmdPal\FancyText.DevKe
 ## 已知限制 / 路线图
 
 - 魔鬼文字是随机的，复制形态与预览不完全一致（计划加「换一批」右键命令）；
-- 设置页（纯示例模式 / 预览字数 / 分类显隐）与简繁转换排期中；
+- 设置页（纯示例模式 / 预览字数 / 分类显隐）排期中；
 - 样式包为纯数据格式，无官方包仓库/在线目录（当前靠文件分享；官方扩展包、网页版包编辑器排期中）；
 - 组合符渲染因平台/字体而异（手机与游戏内最佳，PC 部分字体显示方块）——详情页已标注码点；
 - 火星文为字典逐字替换，不含语气词与符号装饰的完整「火星文风格」；
@@ -185,3 +189,5 @@ Export-PfxCertificate -Cert $cert -FilePath src\FancyText.CmdPal\FancyText.DevKe
 
 - 本项目代码：MIT（见 [LICENSE](LICENSE)）
 - 火星文字典数据：来自 [cnchar](https://github.com/theajack/cnchar)（MIT）
+- 简⇄繁词典：来自 [OpenCC](https://github.com/BYVoid/OpenCC)（Apache-2.0）
+- 拼音数据：来自 [mozillazg/pinyin-data](https://github.com/mozillazg/pinyin-data)（MIT）

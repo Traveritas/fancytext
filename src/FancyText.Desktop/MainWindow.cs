@@ -582,7 +582,11 @@ internal sealed class MainWindow : Window
             return;
         }
 
-        if (_settings.PrefillClipboard)
+        if (_settings.PrefillSelection && Helpers.SelectedTextReader.TryRead() is { Length: > 0 } selected)
+        {
+            _inputBox.Text = selected; // 其它应用里有选中文字：优先预填（UIA 只读，不动剪贴板）
+        }
+        else if (_settings.PrefillClipboard)
         {
             SeedInputFromClipboard();
         }

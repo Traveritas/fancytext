@@ -26,6 +26,7 @@ internal sealed record DesktopSettings
     public string PreviewSize { get; init; } = "medium"; // small | medium | large
     public bool LaunchAtLogin { get; init; }
     public bool PrefillClipboard { get; init; } = true; // 唤出时预填剪贴板文字（关=保留上次输入）
+    public bool PrefillSelection { get; init; } = true; // 唤出时优先预填其它应用中选中的文字（UIA 只读，失败回退剪贴板）
     public bool HideAfterCopy { get; init; } = true;    // 复制后收起弹窗（关=留在原地，状态栏提示已复制）
     public string PopupPosition { get; init; } = "cursor"; // cursor | primary
 
@@ -78,6 +79,7 @@ internal sealed record DesktopSettings
                 s = ReadString(root, s, "popupPosition", v => v is "cursor" or "primary");
                 s = ReadBool(root, s, "launchAtLogin");
                 s = ReadBool(root, s, "prefillClipboard");
+                s = ReadBool(root, s, "prefillSelection");
                 s = ReadBool(root, s, "hideAfterCopy");
                 return s;
             }
@@ -194,6 +196,7 @@ internal sealed record DesktopSettings
             {
                 "launchAtLogin" => s with { LaunchAtLogin = value },
                 "prefillClipboard" => s with { PrefillClipboard = value },
+                "prefillSelection" => s with { PrefillSelection = value },
                 "hideAfterCopy" => s with { HideAfterCopy = value },
                 _ => s,
             };

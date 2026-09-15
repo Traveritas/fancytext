@@ -125,6 +125,10 @@ internal static class KnownTransforms
         KnownAlgorithm.Lowercase => input.ToLowerInvariant(),
         KnownAlgorithm.AlternatingCase => EncodingTransforms.ToAlternatingCase(input),
         KnownAlgorithm.StripCombiningMarks => TextTransforms.StripCombiningMarks(input),
+        KnownAlgorithm.SimplifiedToTraditional => ChineseText.ToTraditional(input),
+        KnownAlgorithm.TraditionalToSimplified => ChineseText.ToSimplified(input),
+        KnownAlgorithm.Pinyin => ChineseText.ToPinyin(input),
+        KnownAlgorithm.PinyinAbbr => ChineseText.ToPinyinAbbr(input),
         _ => input,
     };
 }

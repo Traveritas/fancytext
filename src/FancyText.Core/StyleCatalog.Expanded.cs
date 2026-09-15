@@ -218,6 +218,33 @@ public static partial class StyleCatalog
             Note = "由 MartianDictionary 反向构建（火星文 → 简体；一对多时取第一个，非 BMP 字形跳过）",
         });
 
+        // ================= 中文扩充（简繁 / 拼音，OpenCC + pinyin-data 字典惰性加载） =================
+
+        list.Add(new StyleDefinition
+        {
+            Id = "simplified-to-traditional", Name = "简体 → 繁体", Category = TextStyleCategory.Chinese,
+            Steps = [new AlgorithmStep(KnownAlgorithm.SimplifiedToTraditional)],
+            Note = "OpenCC 字典词级最长匹配（头发→頭髮、皇后→皇后），一对多按词消歧；未收录字符原样保留",
+        });
+        list.Add(new StyleDefinition
+        {
+            Id = "traditional-to-simplified", Name = "繁体 → 简体", Category = TextStyleCategory.Chinese,
+            Steps = [new AlgorithmStep(KnownAlgorithm.TraditionalToSimplified)],
+            Note = "OpenCC 字典词级最长匹配（電腦→电脑）；未收录字符原样保留",
+        });
+        list.Add(new StyleDefinition
+        {
+            Id = "pinyin", Name = "拼音（带调）nǐ hǎo", Category = TextStyleCategory.Chinese,
+            Steps = [new AlgorithmStep(KnownAlgorithm.Pinyin)],
+            Note = "汉字 → 带声调拼音（mozillazg/pinyin-data，基本区 2.4 万字），词间空格；多音字取最常用读音，非汉字原样保留",
+        });
+        list.Add(new StyleDefinition
+        {
+            Id = "pinyin-abbr", Name = "拼音缩写 nhm", Category = TextStyleCategory.Chinese,
+            Steps = [new AlgorithmStep(KnownAlgorithm.PinyinAbbr)],
+            Note = "汉字 → 拼音首字母（你好吗→nhm 网络缩写文体）；英文与数字原样保留",
+        });
+
         // ================= 编码（调研报告 2.E） =================
 
         list.Add(new StyleDefinition

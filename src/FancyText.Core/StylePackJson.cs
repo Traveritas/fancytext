@@ -69,6 +69,10 @@ internal static class StylePackJson
         KnownAlgorithm.Lowercase => "lowercase",
         KnownAlgorithm.AlternatingCase => "alternating-case",
         KnownAlgorithm.StripCombiningMarks => "strip-combining-marks",
+        KnownAlgorithm.SimplifiedToTraditional => "simplified-to-traditional",
+        KnownAlgorithm.TraditionalToSimplified => "traditional-to-simplified",
+        KnownAlgorithm.Pinyin => "pinyin",
+        KnownAlgorithm.PinyinAbbr => "pinyin-abbr",
         _ => algorithm.ToString(),
     };
 
@@ -91,6 +95,10 @@ internal static class StylePackJson
             case "lowercase": algorithm = KnownAlgorithm.Lowercase; return true;
             case "alternating-case": algorithm = KnownAlgorithm.AlternatingCase; return true;
             case "strip-combining-marks": algorithm = KnownAlgorithm.StripCombiningMarks; return true;
+            case "simplified-to-traditional": algorithm = KnownAlgorithm.SimplifiedToTraditional; return true;
+            case "traditional-to-simplified": algorithm = KnownAlgorithm.TraditionalToSimplified; return true;
+            case "pinyin": algorithm = KnownAlgorithm.Pinyin; return true;
+            case "pinyin-abbr": algorithm = KnownAlgorithm.PinyinAbbr; return true;
             default: algorithm = default; return false;
         }
     }

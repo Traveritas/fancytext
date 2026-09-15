@@ -146,6 +146,12 @@ internal static class StyleEnglish
         ["cyrillic-lookalike"] = "Cyrillic Lookalike",
         ["martian-reverse"] = "Martian Reverse",
 
+        // ===== 中文扩充：简繁 / 拼音 =====
+        ["simplified-to-traditional"] = "Simplified → Traditional",
+        ["traditional-to-simplified"] = "Traditional → Simplified",
+        ["pinyin"] = "Pinyin (toned) nǐ hǎo",
+        ["pinyin-abbr"] = "Pinyin Abbr nhm",
+
         // ===== 扩充：编码 / 变换 =====
         ["braille"] = "Braille",
         ["nato"] = "NATO Alphabet",
@@ -295,6 +301,12 @@ internal static class StyleEnglish
         ["digits-double-circled"] = "1–9 → ⓵–⓽ (double circled digits U+24F5–24FD; the run covers 1–10 with no zero — 0 and other characters fall back unchanged)",
         ["cyrillic-lookalike"] = "Lookalike Cyrillic uppercase substitution: A→А B→В E→Е K→К M→М H→Н O→О P→Р C→С T→Т X→Х Y→У (U+0410 block)",
         ["martian-reverse"] = "Reversed MartianDictionary map (Mars → Simplified Chinese; first entry wins on one-to-many, non-BMP glyphs skipped)",
+
+        // ===== 中文扩充：简繁 / 拼音 =====
+        ["simplified-to-traditional"] = "OpenCC dictionary with greedy longest-phrase matching (头发→頭髮, 皇后→皇后); unmapped characters pass through unchanged",
+        ["traditional-to-simplified"] = "OpenCC dictionary with greedy longest-phrase matching (電腦→电脑); unmapped characters pass through unchanged",
+        ["pinyin"] = "Hanzi → toned pinyin (mozillazg/pinyin-data, ~24k basic-plane characters), syllables separated by spaces; polyphonic characters use the most common reading, non-Hanzi kept as-is",
+        ["pinyin-abbr"] = "Hanzi → pinyin initials (你好吗 → nhm); Latin letters and digits kept as-is",
 
         // ===== 扩充：编码 / 变换 =====
         ["braille"] = "Grade-1 letter-by-letter: a–z mapped to 8-dot braille cells (a = ⠁ from U+2801), same glyph for both cases; digits prefixed with number sign ⠼ (U+283C), 1–9/0 reuse the a–j shapes",

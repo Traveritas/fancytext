@@ -16,6 +16,9 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Resources\spark-simple.json" />
+    <EmbeddedResource Include="Resources\opencc-st.txt.gz" />
+    <EmbeddedResource Include="Resources\opencc-ts.txt.gz" />
+    <EmbeddedResource Include="Resources\pinyin.txt.gz" />
   </ItemGroup>
 
 </Project>
