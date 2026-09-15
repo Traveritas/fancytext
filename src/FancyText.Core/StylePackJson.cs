@@ -27,7 +27,7 @@ internal static class StylePackJson
 
     public static string ToKebab(TextStyleCategory category) => category switch
     {
-        TextStyleCategory.CjkEffect => "cjk-effect",
+        TextStyleCategory.CjkEffect => "effect",
         TextStyleCategory.LatinFancy => "latin-fancy",
         TextStyleCategory.Decoration => "decoration",
         TextStyleCategory.Transform => "transform",
@@ -40,7 +40,9 @@ internal static class StylePackJson
     {
         switch (name)
         {
-            case "cjk-effect": category = TextStyleCategory.CjkEffect; return true;
+            case "effect":
+            case "cjk-effect": // 兼容历史写法（分类曾叫「中文特效」）
+                category = TextStyleCategory.CjkEffect; return true;
             case "latin-fancy": category = TextStyleCategory.LatinFancy; return true;
             case "decoration": category = TextStyleCategory.Decoration; return true;
             case "transform": category = TextStyleCategory.Transform; return true;
@@ -102,7 +104,7 @@ internal sealed class TextStyleCategoryJsonConverter : JsonConverter<TextStyleCa
         var name = reader.TokenType == JsonTokenType.String ? reader.GetString() : null;
         if (name is null || !StylePackJson.TryParseCategory(name, out var category))
         {
-            throw new JsonException($"未知分类：\"{name}\"（可选 cjk-effect / latin-fancy / decoration / transform / chinese / encoding）");
+            throw new JsonException($"未知分类：\"{name}\"（可选 effect / latin-fancy / decoration / transform / chinese / encoding）");
         }
 
         return category;

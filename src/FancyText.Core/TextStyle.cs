@@ -3,10 +3,10 @@ namespace FancyText.Core;
 /// <summary>样式分类，决定列表中的分组与顺序。</summary>
 public enum TextStyleCategory
 {
-    /// <summary>中文特效（组合附加符号，中英通吃）：菊花体、删除线、花藤体、魔鬼文字等。</summary>
+    /// <summary>特效（组合附加符号，中英通吃）：菊花体、删除线、花藤体、魔鬼文字等。</summary>
     CjkEffect,
 
-    /// <summary>拉丁花体（Unicode 区段查表映射）：粗体、花体、哥特体、泡泡字等。</summary>
+    /// <summary>英文/字母花体（Unicode 区段查表映射，仅拉丁字母与数字）：粗体、花体、哥特体、泡泡字等。</summary>
     LatinFancy,
 
     /// <summary>装饰模板（前后缀/逐字包围）：翅膀、边框、括号。</summary>
@@ -26,8 +26,8 @@ public static class TextStyleCategoryExtensions
 {
     public static string DisplayName(this TextStyleCategory category) => category switch
     {
-        TextStyleCategory.CjkEffect => "中文特效",
-        TextStyleCategory.LatinFancy => "花体",
+        TextStyleCategory.CjkEffect => "特效",
+        TextStyleCategory.LatinFancy => "英文/字母花体",
         TextStyleCategory.Decoration => "装饰",
         TextStyleCategory.Transform => "变换",
         TextStyleCategory.Chinese => "中文",

@@ -437,7 +437,7 @@ public static class Program
               "steps": [ { "op": "mapReplace", "map": { "a": "d", "b": "e" } } ] },
             { "id": "test-wing", "name": "测试翅膀", "category": "decoration",
               "steps": [ { "op": "wrapString", "prefix": "꧁", "suffix": "꧂" } ] },
-            { "id": "test-combo", "name": "组合管道", "category": "cjk-effect",
+            { "id": "test-combo", "name": "组合管道", "category": "effect",
               "steps": [
                 { "op": "useMap", "map": "bold" },
                 { "op": "appendMark", "mark": "\u0488", "repeat": 2 },
@@ -464,6 +464,8 @@ public static class Program
         Check(styles["test-combo"].Transform("你好") == "好\u0488\u0488你\u0488\u0488", "组合管道守卫不短路（appendMark 已改变文本，字素倒序）");
         Check(styles["test-alg"].Transform("hello") == "uryyb", "algorithm 引用生效");
         Check(styles["test-caesar"].Source is StyleSource.Pack { PackName: "测试包" }, "来源标记为包");
+        Check(styles["test-combo"].Category == TextStyleCategory.CjkEffect && styles["test-combo"].Category.DisplayName() == "特效", "分类显示名（特效）");
+        Check(Find("bold").Category.DisplayName() == "英文/字母花体", "分类显示名（英文/字母花体）");
 
         // 导出 → 序列化 → 解析 → 重编译 输出一致
         var exported = StylePacks.ExportStyles([Find("bold"), Find("wing-classic"), Find("spacing-wide")], "我的收藏", "我");
@@ -500,6 +502,12 @@ public static class Program
             var result = StylePacks.ParseJson(json, name + ".json");
             Check(result.Pack is null && result.Errors.Count > 0, $"拦截：{name}", string.Join("; ", result.Errors));
         }
+
+        // 分类命名：历史写法 cjk-effect 与新写法 effect 等价（分类更名「特效」前的包仍可导入）
+        var legacyCategory = StylePacks.ParseJson(
+            """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"cjk-effect","steps":[{"op":"reverse"}]}]}""",
+            "alias.json");
+        Check(legacyCategory.Pack?.Styles[0].Category == TextStyleCategory.CjkEffect, "分类历史写法 cjk-effect 兼容");
 
         // 安装 / 扫描 / Reload / 冲突 / 卸载（临时目录）
         var tempDir = Path.Combine(Path.GetTempPath(), "fancytext-packs-test-" + Path.GetRandomFileName());

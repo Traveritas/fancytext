@@ -35,7 +35,7 @@
     {
       "id": "demo-fire-above",
       "name": "示例 · 顶火字",
-      "category": "cjk-effect",
+      "category": "effect",
       "note": "附加组合符（appendMark）：每字后叠 U+0307 上加点 ×2，中英通吃",
       "steps": [
         { "op": "appendMark", "mark": "\u0307", "repeat": 2 }

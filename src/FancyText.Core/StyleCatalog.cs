@@ -50,7 +50,7 @@ public static partial class StyleCatalog
     {
         var list = new List<StyleDefinition>(100);
 
-        // ================= 中文特效（组合附加符号，中英通吃） =================
+        // ================= 特效（组合附加符号，中英通吃） =================
 
         list.Add(new StyleDefinition
         {
@@ -273,7 +273,7 @@ public static partial class StyleCatalog
             Note = "Zalgo：每字随机叠加组合附加符号，重度（可能撑破行高）",
         });
 
-        // ================= 花体（Unicode 区段查表映射，仅拉丁字母与数字） =================
+        // ================= 英文/字母花体（Unicode 区段查表映射，仅拉丁字母与数字） =================
 
         list.Add(new StyleDefinition
         {
