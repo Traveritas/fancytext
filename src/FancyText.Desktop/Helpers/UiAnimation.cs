@@ -53,7 +53,8 @@ internal static class UiAnimation
     private static DoubleAnimation Fade(double to, int ms, IEasingFunction? easing = null,
         FillBehavior fill = FillBehavior.HoldEnd)
     {
-        return new DoubleAnimation(to, TimeSpan.FromMilliseconds(ms))
+        // 运行期再闸一次：「减少动效」/系统动画关闭时 0ms 等价瞬时 Setter（模板故事板无需分叉）
+        return new DoubleAnimation(to, TimeSpan.FromMilliseconds(Enabled ? ms : 0))
         {
             EasingFunction = easing,
             FillBehavior = fill,

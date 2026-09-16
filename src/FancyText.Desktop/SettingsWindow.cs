@@ -2,8 +2,11 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using FancyText.Core;
 using FancyText.Desktop.Helpers;
 using CoreLocalization = FancyText.Core.Localization;
@@ -57,7 +60,32 @@ internal sealed class SettingsWindow : Window
         FontFamily = new FontFamily("Microsoft YaHei UI, Segoe UI");
         PreviewKeyDown += OnPreviewKeyDown;
 
+        // 窗口图标 = exe 内嵌 app.ico（标题栏/任务栏/Alt+Tab 跟随品牌化）
+        using (var extracted = System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath!))
+        {
+            Icon = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(
+                extracted.Handle, Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+        }
+
+        SourceInitialized += (_, _) => ApplyWindowChrome();
+
         BuildContent();
+    }
+
+    /// <summary>设置窗与主弹窗同一套 DWM 语言：沉浸式深色标题栏随主题（仅系统框架部分，客户区样式自理）。</summary>
+    private void ApplyWindowChrome()
+    {
+        try
+        {
+            var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+            var dark = _theme.Dark ? 1 : 0;
+            _ = NativeMethods.DwmSetWindowAttribute(handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
+        }
+        catch (Exception)
+        {
+            // 老系统无此属性：静默无操作
+        }
     }
 
     private void BuildContent()
@@ -161,12 +189,122 @@ internal sealed class SettingsWindow : Window
         Margin = new Thickness(0, 4, 0, 14),
     };
 
-    /// <summary>下拉框深浅色适配：WPF 默认模板对 Background 生效有限，统一走浅色胶囊底座保证可读。</summary>
+    /// <summary>下拉框深浅色适配：整体模板替换（Aero2 铬板基本不响应 Background/Foreground，深色下直接不可读）。</summary>
     private void StyleCombo(ComboBox combo)
     {
         combo.Foreground = _theme.Text;
         combo.Background = _theme.KeycapBackground;
         combo.Margin = new Thickness(0);
+        combo.Style = CreateComboStyle();
+        combo.ItemContainerStyle = CreateComboItemStyle();
+    }
+
+    /// <summary>只读下拉项：文字/高亮跟随主题（默认白底蓝字在深色主题下完全脱节）。</summary>
+    private Style CreateComboItemStyle()
+    {
+        var style = new Style(typeof(ComboBoxItem));
+        style.Setters.Add(new Setter(Control.ForegroundProperty, _theme.Text));
+        style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8, 4, 8, 4)));
+        var highlighted = new Trigger { Property = ComboBoxItem.IsHighlightedProperty, Value = true };
+        highlighted.Setters.Add(new Setter(Control.BackgroundProperty, _theme.HoverItem));
+        highlighted.Setters.Add(new Setter(Control.ForegroundProperty, _theme.Text));
+        style.Triggers.Add(highlighted);
+        return style;
+    }
+
+    /// <summary>
+    /// 只读下拉框的简洁模板：幽灵按钮（选中项 + ▾，hover 83ms 浅底）+ 圆角浮层列表。
+    /// 约定做法：ToggleButton.IsChecked 与 ComboBox.IsDropDownOpen 双向绑定（IsDropDownOpen 是状态真源，
+    /// 选中项/点窗外/Esc 的收起由 ComboBox 自身逻辑驱动）；浮层 IsOpen 同样双向绑定（StaysOpen=false
+    /// 自关闭要能回写状态）。PART_Popup 命名是 ComboBox 模板的部件约定。
+    /// </summary>
+    private Style CreateComboStyle()
+    {
+        var style = new Style(typeof(ComboBox));
+
+        // —— 幽灵按钮（显示选中项 + ▾）——
+        var selection = new FrameworkElementFactory(typeof(ContentPresenter));
+        // 内层是 toggle 模板，TemplateBinding 只能绑 toggle 自身：选中项内容经 toggle.Content 桥接（见下）
+        selection.SetValue(ContentPresenter.ContentProperty, new TemplateBindingExtension(ContentControl.ContentProperty));
+        selection.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+
+        var arrow = new FrameworkElementFactory(typeof(TextBlock));
+        arrow.SetValue(TextBlock.TextProperty, "▾");
+        arrow.SetValue(TextBlock.FontSizeProperty, 11d);
+        arrow.SetValue(TextBlock.ForegroundProperty, _theme.Meta);
+        arrow.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        arrow.SetValue(DockPanel.DockProperty, Dock.Right);
+
+        var btnContent = new FrameworkElementFactory(typeof(DockPanel));
+        btnContent.SetValue(FrameworkElement.MarginProperty, new Thickness(9, 5, 9, 5));
+        btnContent.AppendChild(arrow);
+        btnContent.AppendChild(selection);
+
+        var btnHover = new FrameworkElementFactory(typeof(Border));
+        btnHover.Name = "ComboHover";
+        btnHover.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        btnHover.SetValue(Border.BackgroundProperty, _theme.HoverItem);
+        btnHover.SetValue(UIElement.OpacityProperty, 0d);
+
+        var btnGrid = new FrameworkElementFactory(typeof(Grid));
+        btnGrid.SetValue(Panel.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
+        btnGrid.AppendChild(btnHover);
+        btnGrid.AppendChild(btnContent);
+
+        var toggleTemplate = new ControlTemplate(typeof(ToggleButton)) { VisualTree = btnGrid };
+        var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hover.EnterActions.Add(UiAnimation.OpacityAction("ComboHover", UiAnimation.Fade83(1, FillBehavior.HoldEnd)));
+        hover.ExitActions.Add(UiAnimation.OpacityAction("ComboHover", UiAnimation.Fade83(0, FillBehavior.Stop)));
+        toggleTemplate.Triggers.Add(hover); // 覆盖层在 toggle 模板命名域里，触发器必须挂同一模板
+
+        var toggle = new FrameworkElementFactory(typeof(ToggleButton));
+        toggle.SetValue(ToggleButton.ClickModeProperty, ClickMode.Press);
+        // 桥接：内层 toggle 模板里的 TemplateBinding 绑的是 toggle 自身，选中项/底色/文字色先透传到 toggle
+        toggle.SetValue(ContentControl.ContentProperty, new TemplateBindingExtension(ComboBox.SelectionBoxItemProperty));
+        toggle.SetValue(Control.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
+        toggle.SetValue(Control.ForegroundProperty, new TemplateBindingExtension(Control.ForegroundProperty));
+        toggle.SetValue(ToggleButton.IsCheckedProperty, new Binding(nameof(ComboBox.IsDropDownOpen))
+        {
+            Mode = BindingMode.TwoWay,
+            RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent),
+        });
+        toggle.SetValue(Control.TemplateProperty, toggleTemplate);
+        toggle.SetValue(FrameworkElement.CursorProperty, Cursors.Hand);
+
+        // —— 圆角浮层列表 ——
+        var itemsHost = new FrameworkElementFactory(typeof(ItemsPresenter));
+        var scroller = new FrameworkElementFactory(typeof(ScrollViewer));
+        scroller.SetValue(ScrollViewer.CanContentScrollProperty, true);
+        scroller.SetValue(ScrollViewer.MaxHeightProperty, 360d);
+        scroller.AppendChild(itemsHost);
+
+        var flyout = new FrameworkElementFactory(typeof(Border));
+        flyout.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        flyout.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        flyout.SetValue(Border.BorderBrushProperty, _theme.WindowBorder);
+        flyout.SetValue(Border.BackgroundProperty, _theme.FlyoutBackground);
+        flyout.SetValue(Border.PaddingProperty, new Thickness(4));
+        flyout.AppendChild(scroller);
+
+        var popup = new FrameworkElementFactory(typeof(Popup));
+        popup.Name = "PART_Popup";
+        popup.SetValue(Popup.IsOpenProperty, new Binding(nameof(ComboBox.IsDropDownOpen))
+        {
+            Mode = BindingMode.TwoWay,
+            RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent),
+        });
+        popup.SetValue(Popup.PlacementProperty, PlacementMode.Bottom);
+        popup.SetValue(Popup.AllowsTransparencyProperty, true); // 仅此小浮层（圆角需要），无 Effect
+        popup.SetValue(Popup.PopupAnimationProperty, PopupAnimation.None);
+        popup.SetValue(Popup.StaysOpenProperty, false);
+        popup.AppendChild(flyout);
+
+        var root = new FrameworkElementFactory(typeof(Grid));
+        root.AppendChild(toggle);
+        root.AppendChild(popup);
+
+        style.Setters.Add(new Setter(Control.TemplateProperty, new ControlTemplate(typeof(ComboBox)) { VisualTree = root }));
+        return style;
     }
 
     /// <summary>语言下拉：中文 / English / 跟随系统。默认中文（与本地化前版本一致）；切换写入共享 state.json，三端一致。</summary>
@@ -261,27 +399,135 @@ internal sealed class SettingsWindow : Window
         return combo;
     }
 
-    private CheckBox MakeToggle(string name, bool value, Action<bool> apply)
+    /// <summary>Fluent 风开关（替换默认方框 CheckBox）：圆角轨道 + 圆形滑块，勾选时滑块 83ms 滑入
+    /// 且轨道变强调色（「减少动效」/系统动画关闭时 0ms 瞬时到位）。对外仍是 IsChecked/Checked/Unchecked。</summary>
+    private ToggleButton MakeToggle(string name, bool value, Action<bool> apply)
     {
-        var box = new CheckBox
+        var box = new ToggleButton
         {
             IsChecked = value,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
             Tag = name,
+            Style = CreateSwitchStyle(),
+            Cursor = Cursors.Hand,
         };
         box.Checked += (_, _) => apply(true);
         box.Unchecked += (_, _) => apply(false);
         return box;
     }
 
-    /// <summary>统一小按钮：主题底色/文字色（默认白按钮在深色主题下过亮）。</summary>
+    /// <summary>开关模板：轨道 38×18 圆角 9（未选=透明底+Meta 描边、选中=强调色），滑块 12px
+    /// 白圆随 IsChecked 滑动 0→20px。笔刷切换走瞬时 Setter（冻结笔刷不能动画），滑动只动 RenderTransform。</summary>
+    private Style CreateSwitchStyle()
+    {
+        var style = new Style(typeof(ToggleButton));
+
+        var track = new FrameworkElementFactory(typeof(Border));
+        track.Name = "Track";
+        track.SetValue(Border.WidthProperty, 38d);
+        track.SetValue(Border.HeightProperty, 18d);
+        track.SetValue(Border.CornerRadiusProperty, new CornerRadius(9));
+        track.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        track.SetValue(Border.BorderBrushProperty, _theme.Meta);
+        track.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+
+        var thumb = new FrameworkElementFactory(typeof(Border));
+        thumb.Name = "Thumb";
+        thumb.SetValue(Border.WidthProperty, 12d);
+        thumb.SetValue(Border.HeightProperty, 12d);
+        thumb.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        thumb.SetValue(Border.BackgroundProperty, _theme.Meta);
+        thumb.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Left);
+        thumb.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        thumb.SetValue(FrameworkElement.MarginProperty, new Thickness(3, 0, 0, 0));
+        thumb.SetValue(UIElement.RenderTransformProperty, new TranslateTransform());
+
+        var grid = new FrameworkElementFactory(typeof(Grid));
+        grid.AppendChild(track);
+        grid.AppendChild(thumb);
+
+        var template = new ControlTemplate(typeof(ToggleButton)) { VisualTree = grid };
+
+        var on = new Trigger { Property = ToggleButton.IsCheckedProperty, Value = true };
+        on.EnterActions.Add(SwitchSlideAction(on: true));
+        on.ExitActions.Add(SwitchSlideAction(on: false));
+        on.Setters.Add(new Setter(Border.BackgroundProperty, _theme.Primary, "Track"));
+        on.Setters.Add(new Setter(Border.BorderBrushProperty, _theme.Primary, "Track"));
+        on.Setters.Add(new Setter(Border.BackgroundProperty, Brushes.White, "Thumb"));
+        template.Triggers.Add(on);
+
+        var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hover.Setters.Add(new Setter(Border.BorderBrushProperty, _theme.Text, "Track"));
+        template.Triggers.Add(hover);
+
+        style.Setters.Add(new Setter(Control.TemplateProperty, template));
+        return style;
+    }
+
+    /// <summary>滑块滑动故事板：TranslateTransform.X → on?20:0；「减少动效」时 0ms 等价瞬时到位。</summary>
+    private static BeginStoryboard SwitchSlideAction(bool on)
+    {
+        var animation = new DoubleAnimation(on ? 20d : 0d,
+            TimeSpan.FromMilliseconds(UiAnimation.Enabled ? UiAnimation.HoverMs : 0))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            FillBehavior = FillBehavior.HoldEnd, // 停在滑动终点（IsChecked 翻转时 ExitActions 接管回程）
+        };
+        Storyboard.SetTargetName(animation, "Thumb");
+        Storyboard.SetTargetProperty(animation, new PropertyPath("(UIElement.RenderTransform).(TranslateTransform.X)"));
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(animation);
+        return new BeginStoryboard { Storyboard = storyboard };
+    }
+
+    /// <summary>统一小按钮：主题底色/文字色（默认白按钮在深色主题下过亮）+ 圆角 hover 模板（直角铬板与新弹窗割裂）。</summary>
     private void StyleButton(Button button)
     {
         button.Foreground = _theme.KeycapText;
         button.Background = _theme.KeycapBackground;
         button.BorderBrush = _theme.KeycapBorder;
         button.BorderThickness = new Thickness(1);
+        button.Style = CreateButtonStyle();
+    }
+
+    /// <summary>按钮模板：圆角 6，hover 时预着色 HoverItem 覆盖层淡入（83ms，「减少动效」时 0ms 瞬时）。
+    /// 颜色/边框/内距经 TemplateBinding 透传实例值（StyleButton 设定）。</summary>
+    private Style CreateButtonStyle()
+    {
+        var style = new Style(typeof(Button));
+
+        var border = new FrameworkElementFactory(typeof(Border));
+        border.Name = "BtnBorder";
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        border.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
+        border.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(Control.BorderBrushProperty));
+        border.SetValue(Border.BorderThicknessProperty, new TemplateBindingExtension(Control.BorderThicknessProperty));
+
+        var hoverOverlay = new FrameworkElementFactory(typeof(Border));
+        hoverOverlay.Name = "BtnHover";
+        hoverOverlay.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        hoverOverlay.SetValue(Border.BackgroundProperty, _theme.HoverItem);
+        hoverOverlay.SetValue(UIElement.OpacityProperty, 0d);
+
+        var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+        presenter.SetValue(FrameworkElement.MarginProperty, new TemplateBindingExtension(Control.PaddingProperty));
+        presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        presenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+
+        var grid = new FrameworkElementFactory(typeof(Grid));
+        grid.AppendChild(hoverOverlay);
+        grid.AppendChild(presenter);
+        border.AppendChild(grid);
+
+        var template = new ControlTemplate(typeof(Button)) { VisualTree = border };
+        var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hover.EnterActions.Add(UiAnimation.OpacityAction("BtnHover", UiAnimation.Fade83(1, FillBehavior.HoldEnd)));
+        hover.ExitActions.Add(UiAnimation.OpacityAction("BtnHover", UiAnimation.Fade83(0, FillBehavior.Stop)));
+        template.Triggers.Add(hover);
+
+        style.Setters.Add(new Setter(Control.TemplateProperty, template));
+        return style;
     }
 
     /// <summary>强调色面板：「跟随系统」胶囊 + 8 个预设圆点 + 自定义十六进制输入。</summary>
@@ -366,6 +612,11 @@ internal sealed class SettingsWindow : Window
             Text = isAuto ? string.Empty : _settings.Accent,
             IsReadOnly = isAuto, // 跟随系统时不接受手输，点色板或胶囊退出该模式
             VerticalAlignment = VerticalAlignment.Center,
+            // 主题化：默认白底输入框在深色主题下是视觉噪点
+            Background = _theme.InputIdleBackground,
+            Foreground = _theme.Text,
+            BorderBrush = _theme.WindowBorder,
+            CaretBrush = _theme.Primary,
         };
         var hexHint = new TextBlock
         {
@@ -793,6 +1044,7 @@ internal sealed class SettingsWindow : Window
             _theme = _main.CurrentTheme;
             // 重建在事件处理器内替换自身控件树有重入风险，延迟到空闲
             Dispatcher.BeginInvoke(BuildContent);
+            ApplyWindowChrome(); // 标题栏明暗随主题
         }
     }
 
