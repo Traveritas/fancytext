@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FancyText UI 设计稿 · 合体稿 F — B 极简主体 + A keycap 页脚 + D 分类侧栏</title>
+<style>
+/* ============================================================
+   FancyText 主弹窗 · 合体稿 F：B（Raycast 极简）+ A（keycap 页脚）+ D（左侧分类栏）
+   - 主体布局/列表/交互/动画沿用 b-minimal.html
+   - 底部 keycap 快捷键栏取自 a-fluent.html
+   - 56px 纵向分类栏与真实过滤逻辑取自 d-compact.html
+   - 自包含单文件：无外部请求，双击即可打开
+   ============================================================ */
+
+/* ---------- 主题变量：深色（默认） ---------- */
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --accent:#6352DC;
+  --accent-text:#9D92FF;            /* 分类栏当前项文字/图标，窗口底上 ≈5.4:1 */
+  --accent-soft-bg:rgba(99,82,220,.16);
+  --bg-window:rgba(28,28,28,.96);   /* 模拟 Mica 基底 */
+  --bg-card:rgba(255,255,255,.045);
+  --text:#F2F2F2;                   /* 窗口底上 ≈15.6:1 */
+  --text-meta:#A6A6A6;              /* 窗口底上 ≈7.1:1，选中行上 ≈5.9:1 */
+  --bg-hover:rgba(255,255,255,.055);
+  --bg-selected:rgba(255,255,255,.09);
+  --border:rgba(255,255,255,.10);
+  --chip-bg:rgba(255,255,255,.06);
+  --chip-active-bg:rgba(255,255,255,.10);
+  --chip-active-text:#EDEDED;
+  /* 窗口 chrome（非应用笔刷，WPF 里由 DWM/窗口样式负责） */
+  --window-edge:rgba(255,255,255,.09);
+  --window-shadow:0 18px 50px rgba(0,0,0,.42);
+  --mica-sheen:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,0) 32%);
+}
+
+/* ---------- 主题变量：浅色 ---------- */
+:root[data-theme="light"]{
+  color-scheme:light;
+  --accent:#6352DC;
+  --accent-text:#5247CE;            /* 窗口底上 ≈5.8:1 */
+  --accent-soft-bg:rgba(99,82,220,.10);
+  --bg-window:rgba(250,250,251,.96);
+  --bg-card:rgba(0,0,0,.035);
+  --text:#1B1B1B;                   /* ≈16.5:1 */
+  --text-meta:#5F5F5F;              /* ≈6.1:1，选中行上 ≈5.5:1 */
+  --bg-hover:rgba(0,0,0,.045);
+  --bg-selected:rgba(0,0,0,.07);
+  --border:rgba(0,0,0,.10);
+  --chip-bg:rgba(0,0,0,.05);
+  --chip-active-bg:rgba(0,0,0,.08);
+  --chip-active-text:#1B1B1B;
+  --window-edge:rgba(0,0,0,.07);
+  --window-shadow:0 18px 50px rgba(40,40,80,.22);
+  --mica-sheen:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,0) 32%);
+}
+
+/* ---------- 基础 ---------- */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  min-height:100vh;padding:32px 16px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+  font-family:"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI",sans-serif;
+  /* 「桌面壁纸」：柔和彩色渐变，仅作衬托 */
+  background:linear-gradient(135deg,#a79bf5 0%,#8fc3ff 34%,#8fe0cf 68%,#f3bde0 100%);
+}
+
+/* ---------- 窗口：540×600，8px 圆角，1px 内描边 + Mica 示意 ---------- */
+.window{
+  width:540px;height:600px;border-radius:8px;overflow:hidden;
+  display:flex;flex-direction:row;
+  background-color:var(--bg-window);
+  background-image:var(--mica-sheen),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+  background-size:auto,120px 120px;
+  box-shadow:inset 0 0 0 1px var(--window-edge),var(--window-shadow);
+  /* 入场动画 = WPF 唤出动画参数：200ms cubic-bezier(0.33,1,0.68,1) */
+  animation:win-in 200ms cubic-bezier(.33,1,.68,1) both;
+}
+@keyframes win-in{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
+
+/* ---------- 左侧 56px 分类栏（取自 D，图标统一 16×16 细线性 1.5px 描边） ---------- */
+.rail{
+  width:56px;flex:0 0 auto;padding:12px 0;
+  display:flex;flex-direction:column;gap:2px;
+  user-select:none;
+}
+.rail-item{
+  width:44px;margin:0 auto;padding:7px 0 6px;border:0;border-radius:6px;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  background:transparent;color:var(--text-meta);font-family:inherit;
+  transition:background-color 83ms ease,color 83ms ease;   /* hover 83ms */
+}
+.rail-item:hover{background:var(--bg-hover)}
+.rail-item.active{
+  background:var(--accent-soft-bg);color:var(--accent-text);   /* 强调色图标 + 浅底圆角 6 */
+  transition-duration:167ms;                                   /* 选中态 167ms */
+}
+.rail-item svg{width:16px;height:16px;display:block}
+.rail-item span{font-size:10px;line-height:1}
+
+/* 分类栏与主区间的 1px 分隔线 */
+.divider{width:1px;flex:0 0 auto;background:var(--border)}
+
+/* ---------- 右侧主区 ---------- */
+.main{
+  flex:1 1 auto;min-width:0;padding:20px 20px 14px 16px;
+  display:flex;flex-direction:column;
+}
+
+/* ---------- 输入区：无边框大字号 + 放大镜，仅底部 1px 分隔线 ---------- */
+/* 顶部无独立拖动条——输入区上方 20px 留白即真实应用中的隐形拖动区 */
+.search{
+  display:flex;align-items:center;gap:10px;
+  padding:2px 2px 12px;
+  border-bottom:1px solid var(--border);
+  transition:border-color 167ms ease;   /* 聚焦=强调色出现处之一 */
+}
+.search:focus-within{border-bottom-color:var(--accent)}
+.search>.glyph{flex:0 0 auto;color:var(--text-meta);display:flex}
+.search input{
+  flex:1 1 auto;min-width:0;border:0;outline:0;background:transparent;
+  font:inherit;font-size:18px;color:var(--text);
+  caret-color:var(--accent);            /* 光标=强调色出现处之一 */
+}
+.search input::placeholder{color:var(--text-meta);opacity:.7}
+
+/* ---------- 样式列表：行更透气，预览 17px 是绝对主角 ---------- */
+.list{
+  flex:1 1 auto;min-height:0;overflow-y:auto;
+  margin:8px -8px 0;padding:0 8px;     /* 让滚动条更靠窗口边缘 */
+  user-select:none;
+}
+.list::-webkit-scrollbar{width:8px}
+.list::-webkit-scrollbar-track{background:transparent}
+.list::-webkit-scrollbar-thumb{
+  background:rgba(140,140,140,.35);border-radius:4px;
+  border:2px solid transparent;background-clip:padding-box;   /* 细款滚动条 */
+}
+.list::-webkit-scrollbar-thumb:hover{background:rgba(140,140,140,.55);background-clip:padding-box}
+
+.row{
+  display:flex;align-items:center;
+  padding:13px 12px;border-radius:6px;cursor:default;
+  transition:background-color 83ms ease;                       /* hover 83ms */
+}
+.row:hover{background:var(--bg-hover)}
+.row.selected{background:var(--bg-selected);transition-duration:167ms} /* 选中 167ms */
+.row.selected:hover{background:var(--bg-selected)}
+
+.preview{
+  flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:17px;color:var(--text);
+}
+.meta{flex:0 0 auto;margin-left:14px;font-size:11px;color:var(--text-meta)}
+
+/* 选中行的行尾 ⏎ 提示：强调色 chip（白字/紫底 ≈5.6:1），未选中时占位隐藏避免跳动 */
+.enter-chip{
+  flex:0 0 auto;width:22px;margin-left:8px;text-align:center;
+  font-size:11px;line-height:18px;border-radius:4px;
+  background:var(--accent);color:#fff;visibility:hidden;
+}
+.row.selected .enter-chip{visibility:visible}
+
+/* Enter 复制反馈：行内闪烁一次（250ms 内 opacity 1→0.3→1） */
+.row.flash .enter-chip{animation:chip-flash 250ms ease}
+@keyframes chip-flash{0%{opacity:1}50%{opacity:.3}100%{opacity:1}}
+
+/* 过滤后无结果的空态提示 */
+.empty{display:none;padding:28px 0;text-align:center;font-size:11px;color:var(--text-meta)}
+
+/* ---------- 底部 keycap 快捷键栏（取自 A）：分隔线 + kbd 键帽 + 计数 ---------- */
+.status{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 2px 0;margin-top:10px;border-top:1px solid var(--border);
+  font-size:11px;color:var(--text-meta);user-select:none;
+}
+.hints{display:flex;align-items:center;gap:5px}
+.kbd{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:17px;height:17px;padding:0 5px;font-size:10px;color:var(--text-meta);
+  background:var(--bg-card);border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;
+}
+#statusCount.ok{color:var(--text)}
+.status.pulse{animation:status-pulse .3s ease}   /* 输入时闪烁一下 */
+@keyframes status-pulse{50%{opacity:.35}}
+
+/* ---------- 窗口外元素 ---------- */
+.mica-note{font-size:11px;color:rgba(255,255,255,.88);text-shadow:0 1px 3px rgba(0,0,0,.45)}
+.theme-toggle{
+  position:fixed;top:18px;right:18px;width:38px;height:38px;border-radius:50%;
+  border:1px solid rgba(255,255,255,.55);background:rgba(20,20,30,.38);color:#fff;
+  font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 14px rgba(0,0,0,.25);
+}
+.theme-toggle:hover{background:rgba(20,20,30,.55)}
+</style>
+</head>
+<body>
+
+<button class="theme-toggle" id="themeToggle" type="button" title="切换明暗主题">🌗</button>
+
+<div class="window" role="dialog" aria-label="FancyText">
+
+  <!-- 左侧纵向分类栏（56px）：16×16 细线性 SVG 小图标 + 10px 两字标签 -->
+  <aside class="rail" aria-label="样式分类">
+    <button class="rail-item active" type="button" data-cat="all">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></svg>
+      <span>全部</span>
+    </button>
+    <button class="rail-item" type="button" data-cat="fav">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M8 2.6l1.7 3.5 3.8.5-2.8 2.6.7 3.8L8 11.3l-3.4 1.7.7-3.8L2.5 6.6l3.8-.5z"/></svg>
+      <span>收藏</span>
+    </button>
+    <button class="rail-item" type="button" data-cat="recent">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="5.8"/><path d="M8 5v3.2l2.2 1.6"/></svg>
+      <span>最近</span>
+    </button>
+    <button class="rail-item" type="button" data-cat="texiao">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M8 2.5l1.1 2.9 2.9 1.1-2.9 1.1L8 10.5 6.9 7.6 4 6.5l2.9-1.1z"/><path d="M11.8 11l.5 1.3 1.3.5-1.3.5-.5 1.3-.5-1.3-1.3-.5 1.3-.5z"/></svg>
+      <span>特效</span>
+    </button>
+    <button class="rail-item" type="button" data-cat="huati">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13L8.5 3l3.5 10M5.8 9.5h4.4"/></svg>
+      <span>花体</span>
+    </button>
+    <button class="rail-item" type="button" data-cat="zhuangshi">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 2.8C4 4.6 3.2 6.2 3.2 8s.8 3.4 2.8 5.2M10 2.8c2 1.8 2.8 3.4 2.8 5.2s-.8 3.4-2.8 5.2"/></svg>
+      <span>装饰</span>
+    </button>
+    <button class="rail-item" type="button" data-cat="bianhuan">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8a5 5 0 00-9-2.2M3 8a5 5 0 009 2.2"/><path d="M4 2.8v3h3M12 13.2v-3H9"/></svg>
+      <span>变换</span>
+    </button>
+    <button class="rail-item" type="button" data-cat="zhongwen">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M4 4.8h8v6H4z"/><path d="M8 2.8v10.4"/></svg>
+      <span>中文</span>
+    </button>
+    <button class="rail-item" type="button" data-cat="bianma">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4.8L2.8 8 6 11.2M10 4.8L13.2 8 10 11.2"/></svg>
+      <span>编码</span>
+    </button>
+  </aside>
+
+  <div class="divider"></div>
+
+  <!-- 右侧主区 -->
+  <main class="main">
+
+    <!-- 输入区：放大镜 + 18px 无边框输入（筛选入口已移至左侧栏） -->
+    <div class="search">
+      <span class="glyph" aria-hidden="true">
+        <svg width="17" height="17" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.6" stroke="currentColor" stroke-width="1.5"/><path d="M10.6 10.6 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </span>
+      <input id="input" value="你好 Hello" spellcheck="false" autocomplete="off" aria-label="输入要转换的文字">
+    </div>
+
+    <!-- 样式列表：预览 + 右侧对齐 meta，选中行行尾显示 ⏎ chip；data-cat 供分类栏过滤 -->
+    <div class="list" id="list" role="listbox" aria-label="样式列表">
+      <div class="row selected" role="option" aria-selected="true" data-cat="texiao"><span class="preview">你҉好҉ H҉e҉l҉l҉o҉</span><span class="meta">菊花体 · 特效</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+      <div class="row" role="option" aria-selected="false" data-cat="texiao"><span class="preview">H̷e̶l̸l̷o̵</span><span class="meta">魔鬼文字 · 特效</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+      <div class="row" role="option" aria-selected="false" data-cat="huati"><span class="preview">𝓗𝓮𝓵𝓵𝓸</span><span class="meta">粗花体 · 英文花体</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+      <div class="row" role="option" aria-selected="false" data-cat="huati"><span class="preview">𝔥𝔢𝔩𝔩𝔬</span><span class="meta">哥特体 · 英文花体</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+      <div class="row" role="option" aria-selected="false" data-cat="huati"><span class="preview">Ⓗⓔⓛⓛⓞ</span><span class="meta">泡泡字 · 英文花体</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+      <div class="row" role="option" aria-selected="false" data-cat="huati"><span class="preview">Ｈｅｌｌｏ</span><span class="meta">全角 · 英文花体</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+      <div class="row" role="option" aria-selected="false" data-cat="zhuangshi"><span class="preview">༺࿈ 你好 Hello ࿈༻</span><span class="meta">华丽翅膀 · 装饰</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+      <div class="row" role="option" aria-selected="false" data-cat="zhuangshi"><span class="preview">꧁༺ 你好 Hello ༻꧂</span><span class="meta">花藤字 · 装饰</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+      <div class="row" role="option" aria-selected="false" data-cat="bianhuan"><span class="preview">oʅʅǝH 好你</span><span class="meta">倒转 · 变换</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+      <div class="row" role="option" aria-selected="false" data-cat="zhongwen"><span class="preview">伱ぬ Hello</span><span class="meta">火星文 · 中文</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+      <div class="row" role="option" aria-selected="false" data-cat="zhongwen"><span class="preview">nǐ hǎo</span><span class="meta">拼音 · 中文</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+      <div class="row" role="option" aria-selected="false" data-cat="bianma"><span class="preview">5L2g5aW9IEhlbGxv</span><span class="meta">Base64 · 编码</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+      <div class="row" role="option" aria-selected="false" data-cat="bianma"><span class="preview">.... . .-.. .-.. ---</span><span class="meta">摩斯电码 · 编码</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+      <div class="row" role="option" aria-selected="false" data-cat="bianma"><span class="preview">⠓⠑⠇⠇⠕</span><span class="meta">盲文 · 编码</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+      <div class="empty" id="empty">此分类暂无样式</div>
+    </div>
+
+    <!-- 底部 keycap 快捷键栏（A 风格）：分隔线 + kbd 键帽 + 计数 -->
+    <div class="status" id="status">
+      <span class="hints">
+        <span class="kbd">↑</span><span class="kbd">↓</span><span>浏览</span>
+        <span class="kbd">Enter</span><span>复制</span>
+        <span class="kbd">Esc</span><span>隐藏</span>
+      </span>
+      <span id="statusCount">14 个可用样式</span>
+    </div>
+
+  </main>
+
+</div>
+
+<div class="mica-note">Mica 材质为示意，实际由 DWM 系统渲染</div>
+
+<script>
+(function(){
+  /* ---------- 明暗主题切换：只改 data-theme，颜色全走 CSS 变量 ---------- */
+  var root=document.documentElement;
+  document.getElementById('themeToggle').addEventListener('click',function(){
+    root.dataset.theme=(root.dataset.theme==='dark')?'light':'dark';
+  });
+
+  var list=document.getElementById('list');
+  var rows=[].slice.call(list.querySelectorAll('.row'));
+  var empty=document.getElementById('empty');
+  var status=document.getElementById('status');
+  var statusCount=document.getElementById('statusCount');
+  var sel=rows[0], copyTimer=null;
+
+  function visibleRows(){
+    return rows.filter(function(r){ return r.style.display!=='none'; });
+  }
+
+  /* ---------- 选中态迁移（含 aria 同步），滚动跟随 ---------- */
+  function select(row,scroll){
+    if(!row) return;
+    if(sel){ sel.classList.remove('selected'); sel.setAttribute('aria-selected','false'); }
+    sel=row;
+    sel.classList.add('selected');
+    sel.setAttribute('aria-selected','true');
+    if(scroll!==false) sel.scrollIntoView({block:'nearest'});
+  }
+
+  function updateCount(){
+    statusCount.textContent=visibleRows().length+' 个可用样式';
+  }
+
+  /* ---------- 行内闪烁复制反馈：⏎ chip 闪烁一次 + 状态栏「已复制 ✓」1.2s ---------- */
+  function copyFlash(){
+    if(!sel||sel.style.display==='none') return;
+    var row=sel;
+    row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash');
+    setTimeout(function(){row.classList.remove('flash');},300);
+    statusCount.textContent='已复制 ✓';
+    statusCount.classList.add('ok');
+    clearTimeout(copyTimer);
+    copyTimer=setTimeout(function(){
+      statusCount.classList.remove('ok');
+      updateCount();   /* 恢复到当前过滤后的实际数量 */
+    },1200);
+  }
+
+  rows.forEach(function(r){ r.addEventListener('click',function(){ select(r); }); });
+
+  /* ---------- 分类栏点击：切换当前项并真实过滤列表（计数联动） ---------- */
+  var railItems=[].slice.call(document.querySelectorAll('.rail-item'));
+  railItems.forEach(function(btn){
+    btn.addEventListener('click',function(){
+      document.querySelector('.rail-item.active').classList.remove('active');
+      btn.classList.add('active');
+      var cat=btn.dataset.cat;
+      rows.forEach(function(r){
+        r.style.display=(cat==='all'||r.dataset.cat===cat)?'':'none';
+      });
+      var vis=visibleRows();
+      empty.style.display=vis.length?'none':'';
+      list.scrollTop=0;
+      if(vis.length&&vis.indexOf(sel)===-1) select(vis[0]);
+      updateCount();
+    });
+  });
+
+  /* ---------- 键盘：↑↓ 在可见行内移动选中，Enter 复制反馈 ---------- */
+  document.addEventListener('keydown',function(e){
+    var vis=visibleRows();
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+      e.preventDefault();
+      if(!vis.length) return;
+      var i=vis.indexOf(sel);
+      select(vis[e.key==='ArrowDown'?Math.min(i+1,vis.length-1):Math.max(i-1,0)]);
+    }
+    else if(e.key==='Enter'){ e.preventDefault(); copyFlash(); }
+  });
+
+  /* ---------- 输入可编辑：不做真实转换，仅让状态栏脉冲一下 ---------- */
+  var input=document.getElementById('input');
+  input.addEventListener('input',function(){
+    status.classList.remove('pulse'); void status.offsetWidth; status.classList.add('pulse');
+  });
+  input.focus();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FancyText 设计稿 · 方向 C 卡片画廊款</title>
+<style>
+/* ============================================================
+   主题变量 —— WPF 侧主题系统从单一 --accent 推导全套笔刷，
+   这里同样保持「一处改色、全局联动」的变量结构。
+   ============================================================ */
+html[data-theme="dark"] {
+  --accent: #6352DC;
+  --accent-rgb: 99 82 220;              /* 供 rgba 透明度变体使用 */
+  --accent-ink: #A79DF2;                /* 深色底上的强调色文字（对比度 ≥4.5:1） */
+  --bg-window: rgba(28, 28, 28, 0.96);  /* 模拟 Mica，实际由 DWM 系统渲染 */
+  --bg-card: rgba(0, 0, 0, 0.28);       /* 比窗口底略深 */
+  --text: rgba(255, 255, 255, 0.95);
+  --text-meta: rgba(255, 255, 255, 0.62);
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-selected: rgb(var(--accent-rgb) / 0.14);
+  --border: rgba(255, 255, 255, 0.10);
+  --chip-bg: rgba(255, 255, 255, 0.06);
+  --chip-active-bg: var(--accent);
+  --chip-active-text: #FFFFFF;
+  --stroke: rgba(255, 255, 255, 0.32);  /* 窗口 1px 半透浅色内描边 */
+  --scrollbar: rgba(255, 255, 255, 0.22);
+  --wallpaper: linear-gradient(135deg, #333a5e 0%, #4a3260 45%, #274050 100%);
+  --note: rgba(255, 255, 255, 0.72);
+}
+html[data-theme="light"] {
+  --accent: #6352DC;
+  --accent-rgb: 99 82 220;
+  --accent-ink: #4F40C8;                /* 浅色底上的强调色文字（≈6.9:1） */
+  --bg-window: rgba(250, 250, 252, 0.96);
+  --bg-card: rgba(0, 0, 0, 0.04);
+  --text: #1B1B1F;
+  --text-meta: rgba(27, 27, 31, 0.66);
+  --bg-hover: rgba(255, 255, 255, 0.75); /* 浅色主题 hover = 变亮 */
+  --bg-selected: rgb(var(--accent-rgb) / 0.10);
+  --border: rgba(0, 0, 0, 0.10);
+  --chip-bg: rgba(0, 0, 0, 0.05);
+  --chip-active-bg: var(--accent);
+  --chip-active-text: #FFFFFF;
+  --stroke: rgba(255, 255, 255, 0.75);
+  --scrollbar: rgba(0, 0, 0, 0.28);
+  --wallpaper: linear-gradient(135deg, #cdd8ff 0%, #eed9f4 45%, #cfeee6 100%);
+  --note: rgba(25, 25, 40, 0.62);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 0;
+  background: var(--wallpaper); /* 「桌面壁纸」衬托 */
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+}
+
+/* ---------- 窗口 ---------- */
+.window {
+  width: 540px;
+  height: 620px;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  color: var(--text);
+  background-color: var(--bg-window);
+  /* 轻微噪点 + 顶部微光模拟 Mica（噪点为内联 data URI，无外部请求） */
+  background-image:
+    url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0) 30%);
+  box-shadow: inset 0 0 0 1px var(--stroke); /* Win11 窗口边缘内描边 */
+  /* 唤出动画 = WPF 计划参数：200ms cubic-bezier(0.33,1,0.68,1) */
+  animation: window-in 200ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+@keyframes window-in {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 隐形拖动条：仅保留一条极淡的把手示意 */
+.drag { flex: none; height: 18px; display: flex; justify-content: center; padding-top: 8px; }
+.drag::before {
+  content: ""; width: 32px; height: 4px; border-radius: 2px;
+  background: var(--text-meta); opacity: 0.35;
+}
+
+/* ---------- 输入框（WinUI 填充框样式：浅底 + 聚焦时底部强调线） ---------- */
+.input-row { flex: none; padding: 2px 16px 0; }
+.input {
+  width: 100%; height: 36px;
+  border: 0; border-radius: 6px;
+  background: var(--chip-bg);
+  color: var(--text);
+  font: inherit; font-size: 13.5px;
+  padding: 0 12px;
+  box-shadow: inset 0 -1px 0 var(--border);
+  transition: box-shadow 167ms;
+}
+.input:focus { outline: none; box-shadow: inset 0 -2px 0 var(--accent); }
+
+/* ---------- 胶囊筛选行 + 右端列表/网格切换示意 ---------- */
+.chip-row { flex: none; display: flex; align-items: center; gap: 10px; padding: 12px 16px 0; }
+.chips { flex: 1; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  flex: none; border: 0; cursor: pointer;
+  font: inherit; font-size: 12px;
+  padding: 5px 12px; border-radius: 999px;
+  background: var(--chip-bg); color: var(--text);
+  transition: background-color 83ms, color 83ms; /* hover 过渡 83ms */
+}
+.chip:hover { background: var(--bg-hover); }
+.chip.active { background: var(--chip-active-bg); color: var(--chip-active-text); }
+
+/* 静态示意：当前为网格视图（▦ 高亮） */
+.view-toggle {
+  flex: none; display: flex; gap: 2px; padding: 3px;
+  border-radius: 8px; background: var(--chip-bg);
+  color: var(--text-meta); font-size: 12px; line-height: 1;
+  cursor: default;
+}
+.view-toggle span { padding: 3px 7px; border-radius: 6px; }
+.view-toggle span.on { background: var(--chip-active-bg); color: var(--chip-active-text); }
+
+/* ---------- 卡片网格（2 列 / 间距 10px / 可滚动） ---------- */
+.grid {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 12px 12px 12px 16px;
+  margin-right: 4px; /* 给细滚动条留位 */
+  align-content: start;
+}
+/* 细款自定义滚动条 */
+.grid::-webkit-scrollbar { width: 8px; }
+.grid::-webkit-scrollbar-track { background: transparent; }
+.grid::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* ---------- 卡片 ---------- */
+.card {
+  background: var(--bg-card);
+  border-radius: 8px;
+  padding: 14px 12px;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1.5px transparent; /* 选中描边不占布局 */
+  transition:
+    background-color 167ms cubic-bezier(0.33, 1, 0.68, 1),
+    transform 167ms cubic-bezier(0.33, 1, 0.68, 1),
+    box-shadow 167ms;
+}
+.card:hover { transform: translateY(-2px); background: var(--bg-hover); }
+/* 选中 = 1.5px 强调色描边 + 强调色极浅底（置于 hover 之后，保证选中底色不被 hover 覆盖） */
+.card.selected { background: var(--bg-selected); box-shadow: inset 0 0 0 1.5px var(--accent); }
+/* Enter 复制反馈：描边 250ms 内 opacity 1→0.3→1 */
+.card.selected.flash { animation: ring-flash 250ms ease-in-out; }
+@keyframes ring-flash {
+  0%, 100% { box-shadow: inset 0 0 0 1.5px rgb(var(--accent-rgb) / 1); }
+  50%      { box-shadow: inset 0 0 0 1.5px rgb(var(--accent-rgb) / 0.3); }
+}
+
+/* 上部居中大预览：19px，最多两行、超出省略 */
+.preview { height: 54px; display: flex; align-items: center; justify-content: center; font-size: 19px; line-height: 1.4; }
+.preview span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-align: center;
+  word-break: break-all;
+}
+/* 底部：左样式名 12px / 右分类 tag 10px 胶囊浅底 */
+.card-meta { margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.name { font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tag {
+  flex: none; font-size: 10px; line-height: 1;
+  padding: 3px 8px; border-radius: 999px;
+  background: var(--chip-bg); color: var(--text-meta);
+}
+
+/* ---------- 底部状态栏 ---------- */
+.status {
+  flex: none; height: 36px;
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px;
+  font-size: 11px; color: var(--text-meta);
+}
+.status .hints { display: flex; align-items: center; gap: 6px; }
+kbd {
+  font: inherit; font-size: 10px;
+  padding: 1px 5px;
+  border: 1px solid var(--border); border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--chip-bg); color: var(--text-meta);
+}
+#count.copied { color: var(--accent-ink); }
+#count.tick { animation: tick 200ms; } /* 输入时状态栏轻闪 */
+@keyframes tick { 50% { opacity: 0.35; } }
+
+/* ---------- 窗口外元素 ---------- */
+.mica-note { margin-top: 14px; font-size: 11px; color: var(--note); }
+.theme-btn {
+  position: fixed; top: 18px; right: 18px;
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 1px solid var(--stroke);
+  background: var(--bg-window); color: var(--text);
+  font-size: 16px; cursor: pointer;
+  transition: transform 83ms;
+}
+.theme-btn:hover { transform: scale(1.06); }
+</style>
+</head>
+<body>
+
+<button class="theme-btn" id="themeBtn" title="切换明暗主题">🌗</button>
+
+<div class="stage">
+  <div class="window" role="dialog" aria-label="FancyText">
+    <div class="drag" title="拖动移动窗口（示意）"></div>
+
+    <div class="input-row">
+      <input class="input" id="q" value="你好 Hello" spellcheck="false" aria-label="输入文字">
+    </div>
+
+    <div class="chip-row">
+      <div class="chips" id="chips">
+        <button class="chip active">全部</button>
+        <button class="chip">收藏</button>
+        <button class="chip">最近</button>
+        <button class="chip">特效</button>
+        <button class="chip">英文花体</button>
+        <button class="chip">装饰</button>
+        <button class="chip">变换</button>
+        <button class="chip">中文</button>
+        <button class="chip">编码</button>
+      </div>
+      <div class="view-toggle" title="列表 / 网格切换（静态示意，当前为网格视图）">
+        <span>☰</span><span class="on">▦</span>
+      </div>
+    </div>
+
+    <div class="grid" id="grid" role="listbox" aria-label="样式列表"></div>
+
+    <div class="status">
+      <span class="hints">
+        <kbd>↑</kbd><kbd>↓</kbd> 浏览
+        <kbd>Enter</kbd> 复制
+        <kbd>Esc</kbd> 隐藏
+      </span>
+      <span id="count">14 个可用样式</span>
+    </div>
+  </div>
+
+  <div class="mica-note">Mica 材质为示意，实际由 DWM 系统渲染</div>
+</div>
+
+<script>
+/* 固定示例数据（与真实转换结果一致，勿改字） */
+const STYLES = [
+  { p: "你҉好҉ H҉e҉l҉l҉o҉",            n: "菊花体",   c: "特效" },
+  { p: "H̷e̶l̸l̷o̵",                     n: "魔鬼文字", c: "特效" },
+  { p: "𝓗𝓮𝓵𝓵𝓸",                       n: "粗花体",   c: "英文花体" },
+  { p: "𝔥𝔢𝔩𝔩𝔬",                       n: "哥特体",   c: "英文花体" },
+  { p: "Ⓗⓔⓛⓛⓞ",                       n: "泡泡字",   c: "英文花体" },
+  { p: "Ｈｅｌｌｏ",                    n: "全角",     c: "英文花体" },
+  { p: "༺࿈ 你好 Hello ࿈༻",            n: "华丽翅膀", c: "装饰" },
+  { p: "꧁༺ 你好 Hello ༻꧂",            n: "花藤字",   c: "装饰" },
+  { p: "oʅʅǝH 好你",                   n: "倒转",     c: "变换" },
+  { p: "伱ぬ Hello",                   n: "火星文",   c: "中文" },
+  { p: "nǐ hǎo",                      n: "拼音",     c: "中文" },
+  { p: "5L2g5aW9IEhlbGxv",            n: "Base64",   c: "编码" },
+  { p: ".... . .-.. .-.. ---",        n: "摩斯电码", c: "编码" },
+  { p: "⠓⠑⠇⠇⠕",                     n: "盲文",     c: "编码" }
+];
+
+const grid  = document.getElementById('grid');
+const count = document.getElementById('count');
+const input = document.getElementById('q');
+const DEFAULT_COUNT = '14 个可用样式';
+let sel = 0, restoreTimer = null;
+
+/* 渲染卡片（首卡默认选中）；预览文字走 textContent，避免组合字符被 HTML 解析 */
+STYLES.forEach((s, i) => {
+  const el = document.createElement('div');
+  el.className = 'card' + (i === 0 ? ' selected' : '');
+  el.setAttribute('role', 'option');
+  el.innerHTML =
+    '<div class="preview"><span></span></div>' +
+    '<div class="card-meta"><span class="name"></span><span class="tag"></span></div>';
+  el.querySelector('.preview span').textContent = s.p;
+  el.querySelector('.name').textContent = s.n;
+  el.querySelector('.tag').textContent = s.c;
+  el.addEventListener('click', () => select(i));
+  grid.appendChild(el);
+});
+const cards = [...grid.children];
+
+function select(i, scroll = true) {
+  sel = Math.max(0, Math.min(i, cards.length - 1));
+  cards.forEach((c, j) => {
+    c.classList.toggle('selected', j === sel);
+    c.setAttribute('aria-selected', j === sel);
+  });
+  if (scroll) cards[sel].scrollIntoView({ block: 'nearest' });
+}
+
+/* 键盘：↑↓ 在 2 列网格中按行移动（±2），←→ 按格移动（±1），滚动跟随 */
+document.addEventListener('keydown', e => {
+  if (e.target === input) {            // 输入框内方向键保持光标行为
+    if (e.key === 'Escape') input.blur();
+    return;
+  }
+  let handled = true;
+  switch (e.key) {
+    case 'ArrowDown':  select(sel + 2); break;
+    case 'ArrowUp':    select(sel - 2); break;
+    case 'ArrowRight': select(sel + 1); break;
+    case 'ArrowLeft':  select(sel - 1); break;
+    case 'Enter':      copyFeedback();  break;
+    default: handled = false;
+  }
+  if (handled) e.preventDefault();
+});
+
+/* Enter：选中描边闪烁一次（250ms），状态栏「已复制 ✓」1.2s 后恢复 */
+function copyFeedback() {
+  const card = cards[sel];
+  card.classList.remove('flash');
+  void card.offsetWidth;               // 强制回流以重启动画
+  card.classList.add('flash');
+  setTimeout(() => card.classList.remove('flash'), 260);
+
+  count.textContent = '已复制 ✓';
+  count.classList.add('copied');
+  clearTimeout(restoreTimer);
+  restoreTimer = setTimeout(() => {
+    count.textContent = DEFAULT_COUNT;
+    count.classList.remove('copied');
+  }, 1200);
+}
+
+/* 输入框可编辑：oninput 让状态栏计数轻闪一下（真实转换不在本稿实现） */
+input.addEventListener('input', () => {
+  count.classList.remove('tick');
+  void count.offsetWidth;
+  count.classList.add('tick');
+});
+
+/* 胶囊筛选：仅演示选中态迁移，不做真实过滤 */
+document.querySelectorAll('.chip').forEach(ch => {
+  ch.addEventListener('click', () => {
+    document.querySelector('.chip.active').classList.remove('active');
+    ch.classList.add('active');
+  });
+});
+
+/* 明暗主题切换 */
+document.getElementById('themeBtn').addEventListener('click', () => {
+  const h = document.documentElement;
+  h.dataset.theme = h.dataset.theme === 'dark' ? 'light' : 'dark';
+});
+</script>
+</body>
+</html>

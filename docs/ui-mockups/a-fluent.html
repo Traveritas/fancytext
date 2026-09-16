@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<!--
+  FancyText UI 设计稿 · 方向 A：Fluent 标准款
+  微软 WinUI 3 / Command Palette 原生风：克制、规范、安全。
+  自包含单文件，无任何外部请求；可直接双击在浏览器打开。
+-->
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FancyText · 方向 A：Fluent 标准款</title>
+<style>
+  /* ============ 主题变量（WPF 侧由单一 --accent 推导全套笔刷，此处保持同思路） ============ */
+  :root[data-theme="dark"]{
+    --accent:#6352DC;
+    --bg-window:rgba(30,30,32,.96);
+    --bg-card:rgba(255,255,255,.05);
+    --text:#f3f3f4;                 /* 对窗口底对比度 ≈ 16:1 */
+    --text-meta:#a3a3a8;            /* 对窗口底对比度 ≈ 6.4:1 */
+    --bg-hover:rgba(255,255,255,.05);
+    --bg-selected:rgba(255,255,255,.08);
+    --border:rgba(255,255,255,.08);
+    --chip-bg:rgba(255,255,255,.05);
+    --chip-active-bg:rgba(99,82,220,.24);
+    --chip-active-text:#b9b0fb;     /* 对胶囊底对比度 ≈ 6.5:1 */
+    --edge:rgba(255,255,255,.12);   /* Win11 窗口 1px 内描边 */
+    --tb-line:rgba(255,255,255,.18);/* WinUI 输入框默认底部细线 */
+    --scrollbar:rgba(255,255,255,.2);
+    --wallpaper:linear-gradient(135deg,#31367a 0%,#5b4a9a 38%,#8a5fa0 68%,#3f7391 100%);
+    --note:rgba(255,255,255,.55);
+  }
+  :root[data-theme="light"]{
+    --accent:#6352DC;
+    --bg-window:rgba(249,249,251,.96);
+    --bg-card:#ffffff;
+    --text:#1c1c1e;                 /* 对窗口底对比度 ≈ 16:1 */
+    --text-meta:#5d5d66;            /* 对窗口底对比度 ≈ 6.2:1 */
+    --bg-hover:rgba(0,0,0,.04);
+    --bg-selected:rgba(0,0,0,.055);
+    --border:rgba(0,0,0,.09);
+    --chip-bg:rgba(0,0,0,.045);
+    --chip-active-bg:rgba(99,82,220,.12);
+    --chip-active-text:#4a3cc2;     /* 对胶囊底对比度 ≈ 6.3:1 */
+    --edge:rgba(0,0,0,.1);
+    --tb-line:rgba(0,0,0,.25);
+    --scrollbar:rgba(0,0,0,.2);
+    --wallpaper:linear-gradient(135deg,#c9d4ff 0%,#e6d8f7 45%,#d3e9f8 100%);
+    --note:rgba(0,0,0,.55);
+  }
+
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    font-family:"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI",sans-serif;
+    background:var(--wallpaper);   /* 「桌面壁纸」衬托 */
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ============ 窗口（Mica 示意：近不透明底 + 细噪点；实际材质由 DWM 渲染） ============ */
+  .window{
+    position:relative;width:540px;height:620px;border-radius:8px;overflow:hidden;
+    background-color:var(--bg-window);
+    /* 轻微噪点（内联 SVG data-URI，WPF 可用噪点位图画刷等价实现） */
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.04'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E"),
+      linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,0) 25%);
+    box-shadow:inset 0 0 0 1px var(--edge);
+    display:flex;flex-direction:column;
+    /* 唤出动画 = 计划中 WPF 参数：200ms cubic-bezier(0.33,1,0.68,1)，opacity 0→1 + translateY(-12px)→0 */
+    animation:pop 200ms cubic-bezier(.33,1,.68,1) both;
+  }
+  @keyframes pop{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:none}}
+
+  .drag{flex:0 0 6px} /* 6px 隐形拖动区 */
+
+  /* ============ 输入框：WinUI 填充框，仅聚焦时出现底部 2px 强调色下划线 ============ */
+  .input-area{flex:0 0 auto;padding:4px 12px 10px}
+  #input{
+    width:100%;height:34px;padding:0 12px;
+    font:inherit;font-size:14px;color:var(--text);
+    background:var(--bg-card);
+    border:1px solid var(--border);border-radius:9px;
+    box-shadow:inset 0 -1px 0 var(--tb-line);
+    transition:background-color 83ms,box-shadow 167ms,border-color 167ms;
+  }
+  #input:hover{background:var(--bg-hover)}
+  #input:focus{outline:none;box-shadow:inset 0 -2px 0 var(--accent)}
+
+  /* ============ 筛选胶囊：subtle-fill 药丸，选中 = 强调色浅底 + 强调色文字 ============ */
+  .chips{
+    flex:0 0 auto;display:flex;gap:6px;padding:0 12px 10px;
+    overflow-x:auto;scrollbar-width:none;
+  }
+  .chips::-webkit-scrollbar{display:none}
+  .chip{
+    flex:0 0 auto;height:26px;padding:0 12px;border:none;border-radius:13px;cursor:pointer;
+    font:inherit;font-size:12px;color:var(--text);background:var(--chip-bg);
+    user-select:none;transition:background-color 83ms,color 83ms;
+  }
+  .chip:hover{background:var(--bg-hover)}
+  .chip:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .chip.active{background:var(--chip-active-bg);color:var(--chip-active-text);transition-duration:167ms}
+
+  /* ============ 样式列表：行高 40、圆角 4，选中 = 浅底 + 左侧 3px 强调竖条 ============ */
+  .list{
+    flex:1 1 auto;overflow-y:auto;padding:0 8px 8px;
+    scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent;
+  }
+  .list::-webkit-scrollbar{width:6px}
+  .list::-webkit-scrollbar-thumb{background:var(--scrollbar);border-radius:3px}
+  .list::-webkit-scrollbar-track{background:transparent}
+  .row{
+    position:relative;height:40px;border-radius:4px;margin:1px 0;
+    display:flex;flex-direction:column;justify-content:center;padding:0 10px 0 12px;
+    cursor:pointer;user-select:none;
+    transition:background-color 83ms;                 /* hover 过渡 83ms */
+  }
+  .row:hover{background:var(--bg-hover)}
+  .row.selected,.row.selected:hover{background:var(--bg-selected);transition:background-color 167ms} /* 选中态 167ms */
+  /* AccentBar：WinUI 式 3px 宽、18px 高的圆角竖条，::before 实现，Opacity 过渡 167ms */
+  .row::before{
+    content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);
+    width:3px;height:18px;border-radius:2px;background:var(--accent);
+    opacity:0;transition:opacity 167ms;
+  }
+  .row.selected::before{opacity:1}
+  /* 行内闪烁复制反馈：竖条 250ms 内 opacity 1→0.3→1 */
+  .row.flash::before{animation:barflash 250ms ease-in-out}
+  @keyframes barflash{0%{opacity:1}50%{opacity:.3}100%{opacity:1}}
+
+  .preview{font-size:15px;line-height:19px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .meta{font-size:12px;line-height:15px;color:var(--text-meta)}
+
+  /* ============ 底部状态栏：分隔线 + keycap 提示 + 计数 ============ */
+  .statusbar{
+    flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
+    padding:8px 14px;border-top:1px solid var(--border);
+    font-size:11px;color:var(--text-meta);user-select:none;
+  }
+  .statusbar.pulse{animation:statuspulse 300ms}
+  @keyframes statuspulse{50%{opacity:.4}}
+  .hints{display:flex;align-items:center;gap:5px}
+  .kbd{
+    display:inline-flex;align-items:center;justify-content:center;
+    min-width:17px;height:17px;padding:0 5px;font-size:10px;color:var(--text-meta);
+    background:var(--bg-card);border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;
+  }
+
+  /* ============ 窗口外元素：Mica 说明 + 主题切换 ============ */
+  .mica-note{font-size:11px;color:var(--note)}
+  #themeToggle{
+    position:fixed;top:18px;right:18px;width:34px;height:34px;border-radius:50%;
+    border:1px solid var(--edge);background:var(--bg-window);
+    font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  }
+</style>
+</head>
+<body>
+
+  <div class="window">
+    <div class="drag"></div>
+
+    <div class="input-area">
+      <input id="input" type="text" value="你好 Hello" spellcheck="false" autocomplete="off" aria-label="输入要转换的文字">
+    </div>
+
+    <div class="chips" id="chips">
+      <button class="chip active">全部</button>
+      <button class="chip">收藏</button>
+      <button class="chip">最近</button>
+      <button class="chip">特效</button>
+      <button class="chip">英文花体</button>
+      <button class="chip">装饰</button>
+      <button class="chip">变换</button>
+      <button class="chip">中文</button>
+      <button class="chip">编码</button>
+    </div>
+
+    <!-- 固定示例数据：输入「你好 Hello」，顺序与文案请勿改动 -->
+    <div class="list" id="list" role="listbox" aria-label="样式列表">
+      <div class="row selected" role="option" aria-selected="true"><div class="preview">你҉好҉ H҉e҉l҉l҉o҉</div><div class="meta">菊花体 · 特效</div></div>
+      <div class="row" role="option" aria-selected="false"><div class="preview">H̷e̶l̸l̷o̵</div><div class="meta">魔鬼文字 · 特效</div></div>
+      <div class="row" role="option" aria-selected="false"><div class="preview">𝓗𝓮𝓵𝓵𝓸</div><div class="meta">粗花体 · 英文花体</div></div>
+      <div class="row" role="option" aria-selected="false"><div class="preview">𝔥𝔢𝔩𝔩𝔬</div><div class="meta">哥特体 · 英文花体</div></div>
+      <div class="row" role="option" aria-selected="false"><div class="preview">Ⓗⓔⓛⓛⓞ</div><div class="meta">泡泡字 · 英文花体</div></div>
+      <div class="row" role="option" aria-selected="false"><div class="preview">Ｈｅｌｌｏ</div><div class="meta">全角 · 英文花体</div></div>
+      <div class="row" role="option" aria-selected="false"><div class="preview">༺࿈ 你好 Hello ࿈༻</div><div class="meta">华丽翅膀 · 装饰</div></div>
+      <div class="row" role="option" aria-selected="false"><div class="preview">꧁༺ 你好 Hello ༻꧂</div><div class="meta">花藤字 · 装饰</div></div>
+      <div class="row" role="option" aria-selected="false"><div class="preview">oʅʅǝH 好你</div><div class="meta">倒转 · 变换</div></div>
+      <div class="row" role="option" aria-selected="false"><div class="preview">伱ぬ Hello</div><div class="meta">火星文 · 中文</div></div>
+      <div class="row" role="option" aria-selected="false"><div class="preview">nǐ hǎo</div><div class="meta">拼音 · 中文</div></div>
+      <div class="row" role="option" aria-selected="false"><div class="preview">5L2g5aW9IEhlbGxv</div><div class="meta">Base64 · 编码</div></div>
+      <div class="row" role="option" aria-selected="false"><div class="preview">.... . .-.. .-.. ---</div><div class="meta">摩斯电码 · 编码</div></div>
+      <div class="row" role="option" aria-selected="false"><div class="preview">⠓⠑⠇⠇⠕</div><div class="meta">盲文 · 编码</div></div>
+    </div>
+
+    <div class="statusbar">
+      <div class="hints">
+        <span class="kbd">↑</span><span class="kbd">↓</span><span>浏览</span>
+        <span class="kbd">Enter</span><span>复制</span>
+        <span class="kbd">Esc</span><span>隐藏</span>
+      </div>
+      <div class="count" id="count">14 个可用样式</div>
+    </div>
+  </div>
+
+  <div class="mica-note">Mica 材质为示意，实际由 DWM 系统渲染</div>
+
+  <button id="themeToggle" aria-label="切换明暗主题" title="切换明暗主题">🌗</button>
+
+<script>
+(function(){
+  "use strict";
+  var rows = Array.prototype.slice.call(document.querySelectorAll('.row'));
+  var count = document.getElementById('count');
+  var statusbar = document.querySelector('.statusbar');
+  var DEFAULT_COUNT = count.textContent;
+  var sel = 0, copyTimer = null;
+
+  /* 选中态迁移（含 aria 同步），可选滚动跟随 */
+  function select(i, scroll){
+    rows[sel].classList.remove('selected');
+    rows[sel].setAttribute('aria-selected','false');
+    sel = (i + rows.length) % rows.length;
+    rows[sel].classList.add('selected');
+    rows[sel].setAttribute('aria-selected','true');
+    if (scroll !== false) rows[sel].scrollIntoView({block:'nearest'});
+  }
+
+  /* 点击行 → 选中 */
+  rows.forEach(function(r, i){
+    r.addEventListener('click', function(){ select(i); });
+    r.addEventListener('animationend', function(){ r.classList.remove('flash'); });
+  });
+
+  /* ↑/↓ 移动选中（阻止默认行为，保持启动器式操作，即使焦点在输入框）；Enter → 复制反馈 */
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'ArrowDown'){ e.preventDefault(); select(sel + 1); }
+    else if (e.key === 'ArrowUp'){ e.preventDefault(); select(sel - 1); }
+    else if (e.key === 'Enter'){ e.preventDefault(); copyFeedback(); }
+  });
+
+  /* 已定的「行内闪烁」复制反馈：竖条闪一次（250ms），状态栏「已复制 ✓」1.2s 后恢复 */
+  function copyFeedback(){
+    var row = rows[sel];
+    row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash');
+    clearTimeout(copyTimer);
+    count.textContent = '已复制 ✓';
+    copyTimer = setTimeout(function(){ count.textContent = DEFAULT_COUNT; }, 1200);
+  }
+
+  /* 输入框可编辑，不实现真实转换，仅让状态栏轻闪一下 */
+  document.getElementById('input').addEventListener('input', function(){
+    statusbar.classList.remove('pulse'); void statusbar.offsetWidth; statusbar.classList.add('pulse');
+  });
+
+  /* 筛选胶囊：仅演示选中态迁移（不做真实过滤） */
+  var chips = Array.prototype.slice.call(document.querySelectorAll('.chip'));
+  chips.forEach(function(c){
+    c.addEventListener('click', function(){
+      chips.forEach(function(x){ x.classList.remove('active'); });
+      c.classList.add('active');
+    });
+  });
+
+  /* 明暗主题切换：改 data-theme，颜色全部走 CSS 变量 */
+  document.getElementById('themeToggle').addEventListener('click', function(){
+    var root = document.documentElement;
+    root.dataset.theme = (root.dataset.theme === 'dark') ? 'light' : 'dark';
+  });
+})();
+</script>
+</body>
+</html>

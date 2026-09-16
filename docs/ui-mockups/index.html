@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FancyText 弹窗 UI 改造 · 方向预览</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+    background: #1b1b1f;
+    color: #e8e8ea;
+    padding: 40px 24px 64px;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 600; }
+  .sub { margin-top: 10px; font-size: 13px; line-height: 1.8; color: #a5a5ac; }
+  .sub b { color: #d5d5da; font-weight: 600; }
+  .grid {
+    margin-top: 32px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .card {
+    background: #232327;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .shot {
+    display: block;
+    height: 430px;
+    overflow: hidden;
+    background: #2a2a30;
+    position: relative;
+  }
+  .shot iframe {
+    width: 760px;
+    height: 720px;
+    border: 0;
+    transform: scale(0.58);
+    transform-origin: top left;
+    pointer-events: none;
+  }
+  .shot::after {
+    content: "点击打开完整版 ↗";
+    position: absolute;
+    inset: auto 0 0 0;
+    padding: 28px 0 10px;
+    text-align: center;
+    font-size: 12px;
+    color: #cfcfd6;
+    background: linear-gradient(transparent, rgba(20,20,24,0.85));
+    opacity: 0;
+    transition: opacity 167ms ease-out;
+  }
+  .shot:hover::after { opacity: 1; }
+  .info { padding: 16px 18px 18px; }
+  .info h2 { font-size: 15px; font-weight: 600; }
+  .info h2 .tag {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 500;
+    background: rgba(99,82,220,0.18);
+    color: #b9b0fb;
+    vertical-align: 2px;
+  }
+  .info p { margin-top: 6px; font-size: 12.5px; line-height: 1.7; color: #a5a5ac; }
+  table {
+    margin-top: 36px;
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    vertical-align: top;
+    line-height: 1.6;
+  }
+  th { color: #8a8a92; font-weight: 500; font-size: 12px; }
+  td:first-child { font-weight: 600; color: #d5d5da; white-space: nowrap; }
+  .foot { margin-top: 28px; font-size: 12px; color: #7a7a82; line-height: 1.8; }
+  code { background: rgba(255,255,255,0.07); padding: 1px 6px; border-radius: 4px; font-size: 11.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>FancyText 弹窗 UI 改造 · 四个方向预览</h1>
+  <p class="sub">
+    已定决策：<b>Mica 材质</b>（DWM 系统渲染，四稿均已按此示意）· <b>行内闪烁复制反馈</b>（按 Enter 演示）· <b>≤200ms 唤出动画</b>（打开页面即演示）。<br>
+    点击任意预览图在新标签页打开完整版 → <b>↑↓</b> 移动选中 · <b>Enter</b> 演示复制反馈 · <b>🌗</b> 切换明暗主题。四稿共用同一套示例数据与动效参数，只比较布局与气质。
+  </p>
+
+  <style>
+    .sec { margin-top: 40px; font-size: 16px; font-weight: 600; }
+    .sec + .sub { margin-top: 6px; }
+    .pick { border-color: rgba(99,82,220,0.55); box-shadow: 0 0 0 1px rgba(99,82,220,0.35); }
+  </style>
+
+  <h2 class="sec">合体候选（当前方向：B 主体 + A 页脚）</h2>
+  <p class="sub">两稿只差筛选入口：<b>E</b> 用「全部 ▾」下拉 + ⭐🕘 图标按钮（chrome 最少，更贴 Raycast）；<b>F</b> 用左侧 56px 图标分类栏（分类直达，icon 集固定 9 个，样式包引入不了新分类、无需维护）。两稿的过滤都是真实可点的。</p>
+  <div class="grid">
+    <div class="card pick">
+      <a class="shot" href="e-ba.html" target="_blank"><iframe src="e-ba.html" scrolling="no" tabindex="-1"></iframe></a>
+      <div class="info">
+        <h2>E · B+A 下拉筛选 <span class="tag">候选</span></h2>
+        <p>输入行右侧「全部 ▾」真实下拉（七项分类过滤、计数联动）+ ⭐🕘 快捷图标按钮；底部 A 的 keycap 栏（↑↓ 浏览 / Enter 复制 / Ctrl+D 收藏 / Esc 隐藏）。chrome 最少，视觉最干净。</p>
+      </div>
+    </div>
+    <div class="card pick">
+      <a class="shot" href="f-ba-rail.html" target="_blank"><iframe src="f-ba-rail.html" scrolling="no" tabindex="-1"></iframe></a>
+      <div class="info">
+        <h2>F · B+A+左侧分类栏 <span class="tag">候选</span></h2>
+        <p>输入行只剩放大镜；左缘 56px 图标分类栏（9 项固定：全部/收藏/最近/特效/花体/装饰/变换/中文/编码），点击真实过滤。分类一步到位，重度使用更顺手。</p>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="sec">原始四方向（存档）</h2>
+  <div class="grid">
+    <div class="card">
+      <a class="shot" href="a-fluent.html" target="_blank"><iframe src="a-fluent.html" scrolling="no" tabindex="-1"></iframe></a>
+      <div class="info">
+        <h2>A · Fluent 标准款 <span class="tag">稳妥</span></h2>
+        <p>微软 WinUI 3 原生风：填充式输入框（聚焦露强调色底线）、subtle-fill 胶囊、40px 行 + 左侧强调竖条。与现有代码结构最近，实现成本最低，和 Win11 融为一体。</p>
+      </div>
+    </div>
+    <div class="card">
+      <a class="shot" href="b-minimal.html" target="_blank"><iframe src="b-minimal.html" scrolling="no" tabindex="-1"></iframe></a>
+      <div class="info">
+        <h2>B · Raycast 极简款 <span class="tag">颜值</span></h2>
+        <p>内容绝对主角：无边框大输入、17px 大预览、chrome 只剩一条分隔线一行小字；灰阶铺底，紫色只落在光标与选中处。筛选改成「全部 ▾」+ 图标按钮，交互要重做。</p>
+      </div>
+    </div>
+    <div class="card">
+      <a class="shot" href="c-gallery.html" target="_blank"><iframe src="c-gallery.html" scrolling="no" tabindex="-1"></iframe></a>
+      <div class="info">
+        <h2>C · 卡片画廊款 <span class="tag">浏览感</span></h2>
+        <p>花式文字是视觉驱动的场景：2 列卡片网格，大预览居中、名称与分类 tag 置底，hover 轻浮起。挑装饰类样式最直观；WPF 侧需把 ListBox 换成网格虚拟化，成本最高。</p>
+      </div>
+    </div>
+    <div class="card">
+      <a class="shot" href="d-compact.html" target="_blank"><iframe src="d-compact.html" scrolling="no" tabindex="-1"></iframe></a>
+      <div class="info">
+        <h2>D · 紧凑双栏款 <span class="tag">效率</span></h2>
+        <p>Listary 式键盘流：左侧 56px 图标分类栏直达、32px 高密度行、选中行下展开码点详情条。信息密度最高，重度用户友好；新增左栏与详情结构，成本中高。</p>
+      </div>
+    </div>
+  </div>
+
+  <table>
+    <tr><th>方向</th><th>气质</th><th>信息密度</th><th>WPF 实现成本</th><th>适合的用法</th></tr>
+    <tr><td>A · Fluent 标准</td><td>规范、原生、不炫技</td><td>中</td><td>低（沿用现有结构，换皮+补过渡）</td><td>默认首选；和各种桌面环境都不违和</td></tr>
+    <tr><td>B · Raycast 极简</td><td>安静、克制、内容主角</td><td>低</td><td>中（筛选交互需重设计）</td><td>重输入轻浏览；追求「好看」优先</td></tr>
+    <tr><td>C · 卡片画廊</td><td>浏览感、发现感</td><td>低-中</td><td>高（网格虚拟化 + 模板重做）</td><td>慢慢挑样式；装饰/特效类最出彩</td></tr>
+    <tr><td>D · 紧凑双栏</td><td>效率工具、密度高</td><td>高</td><td>中-高（左栏 + 详情条为新结构）</td><td>高频键盘用户；分类直达</td></tr>
+  </table>
+
+  <p class="foot">
+    四个方向不是互斥的全部——布局、输入区、选中态都可以跨方向组合（例如 A 的骨架 + B 的输入区）。选定方向或组合后，再按 WPF 实现映射（CSS 变量 → Theme 笔刷，transition → Opacity/Transform 动画）。<br>
+    文件位置：<code>docs/ui-mockups/a-fluent.html</code> · <code>b-minimal.html</code> · <code>c-gallery.html</code> · <code>d-compact.html</code>
+  </p>
+</div>
+</body>
+</html>

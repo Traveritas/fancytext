@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FancyText UI 设计稿 · 方向 B — Raycast 极简内容优先</title>
+<style>
+/* ============================================================
+   FancyText 主弹窗 · 方向 B：Raycast 极简内容优先
+   - 540×600 圆角窗口；灰阶为主，--accent 只出现在 选中/聚焦/光标
+   - 全部配色走 CSS 变量（与 WPF 侧「单一强调色推导全套笔刷」对齐）
+   - 对比度自检：正文 ≥15:1，次要文字 ≥5.5:1，⏎ chip 白字/紫底 ≈5.6:1
+   - 自包含单文件：无外部请求，双击即可打开
+   ============================================================ */
+
+/* ---------- 主题变量：深色（默认） ---------- */
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --accent:#6352DC;
+  --bg-window:rgba(28,28,28,.96);   /* 模拟 Mica 基底 */
+  --bg-card:rgba(255,255,255,.045);
+  --text:#F2F2F2;                   /* 窗口底上 ≈15.6:1 */
+  --text-meta:#A6A6A6;              /* 窗口底上 ≈7.1:1，选中行上 ≈5.9:1 */
+  --bg-hover:rgba(255,255,255,.055);
+  --bg-selected:rgba(255,255,255,.09);
+  --border:rgba(255,255,255,.10);
+  --chip-bg:rgba(255,255,255,.06);  /* 笔刷全集 parity：本方向无未选中胶囊，仅留变量 */
+  --chip-active-bg:rgba(255,255,255,.10);
+  --chip-active-text:#EDEDED;
+  /* 窗口 chrome（非应用笔刷，WPF 里由 DWM/窗口样式负责） */
+  --window-edge:rgba(255,255,255,.09);
+  --window-shadow:0 18px 50px rgba(0,0,0,.42);
+  --mica-sheen:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,0) 32%);
+}
+
+/* ---------- 主题变量：浅色 ---------- */
+:root[data-theme="light"]{
+  color-scheme:light;
+  --accent:#6352DC;
+  --bg-window:rgba(250,250,251,.96);
+  --bg-card:rgba(0,0,0,.035);
+  --text:#1B1B1B;                   /* ≈16.5:1 */
+  --text-meta:#5F5F5F;              /* ≈6.1:1，选中行上 ≈5.5:1 */
+  --bg-hover:rgba(0,0,0,.045);
+  --bg-selected:rgba(0,0,0,.07);
+  --border:rgba(0,0,0,.10);
+  --chip-bg:rgba(0,0,0,.05);
+  --chip-active-bg:rgba(0,0,0,.08);
+  --chip-active-text:#1B1B1B;
+  --window-edge:rgba(0,0,0,.07);
+  --window-shadow:0 18px 50px rgba(40,40,80,.22);
+  --mica-sheen:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,0) 32%);
+}
+
+/* ---------- 基础 ---------- */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  min-height:100vh;padding:32px 16px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+  font-family:"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI",sans-serif;
+  /* 「桌面壁纸」：柔和彩色渐变，仅作衬托 */
+  background:linear-gradient(135deg,#a79bf5 0%,#8fc3ff 34%,#8fe0cf 68%,#f3bde0 100%);
+}
+
+/* ---------- 窗口：540×600，8px 圆角，1px 内描边 + Mica 示意 ---------- */
+.window{
+  width:540px;height:600px;border-radius:8px;padding:20px;overflow:hidden;
+  display:flex;flex-direction:column;
+  background-color:var(--bg-window);
+  background-image:var(--mica-sheen),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+  background-size:auto,120px 120px;
+  box-shadow:inset 0 0 0 1px var(--window-edge),var(--window-shadow);
+  /* 入场动画 = WPF 唤出动画参数：200ms cubic-bezier(0.33,1,0.68,1) */
+  animation:win-in 200ms cubic-bezier(.33,1,.68,1) both;
+}
+@keyframes win-in{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
+
+/* ---------- 输入区：无边框大字号 + 放大镜，仅底部 1px 分隔线 ---------- */
+/* 顶部无独立拖动条——输入区上方 20px 留白即真实应用中的隐形拖动区 */
+.search{
+  display:flex;align-items:center;gap:10px;
+  padding:2px 2px 12px;
+  border-bottom:1px solid var(--border);
+  transition:border-color 167ms ease;   /* 聚焦=强调色出现处之一 */
+}
+.search:focus-within{border-bottom-color:var(--accent)}
+.search>.glyph{flex:0 0 auto;color:var(--text-meta);display:flex}
+.search input{
+  flex:1 1 auto;min-width:0;border:0;outline:0;background:transparent;
+  font:inherit;font-size:18px;color:var(--text);
+  caret-color:var(--accent);            /* 光标=强调色出现处之一 */
+}
+.search input::placeholder{color:var(--text-meta);opacity:.7}
+
+/* 输入行右侧：当前筛选（静态示意）+ 收藏/最近两个小图标按钮 */
+.filter-chip{
+  flex:0 0 auto;padding:5px 9px;border-radius:6px;cursor:default;
+  font-size:12px;color:var(--chip-active-text);background:var(--chip-active-bg);
+}
+.icon-btn{
+  flex:0 0 auto;width:28px;height:28px;border:0;border-radius:6px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--bg-card);color:var(--text-meta);
+  transition:background-color 83ms ease,color 83ms ease;   /* hover 83ms */
+}
+.icon-btn:hover{background:var(--bg-hover);color:var(--text)}
+
+/* ---------- 样式列表：行更透气，预览 17px 是绝对主角 ---------- */
+.list{
+  flex:1 1 auto;min-height:0;overflow-y:auto;
+  margin:8px -8px 0;padding:0 8px;     /* 让滚动条更靠窗口边缘 */
+  user-select:none;
+}
+.list::-webkit-scrollbar{width:8px}
+.list::-webkit-scrollbar-track{background:transparent}
+.list::-webkit-scrollbar-thumb{
+  background:rgba(140,140,140,.35);border-radius:4px;
+  border:2px solid transparent;background-clip:padding-box;   /* 细款滚动条 */
+}
+.list::-webkit-scrollbar-thumb:hover{background:rgba(140,140,140,.55);background-clip:padding-box}
+
+.row{
+  display:flex;align-items:center;
+  padding:13px 12px;border-radius:6px;cursor:default;
+  transition:background-color 83ms ease;                       /* hover 83ms */
+}
+.row:hover{background:var(--bg-hover)}
+.row.selected{background:var(--bg-selected);transition-duration:167ms} /* 选中 167ms */
+.row.selected:hover{background:var(--bg-selected)}
+
+.preview{
+  flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:17px;color:var(--text);
+}
+.meta{flex:0 0 auto;margin-left:14px;font-size:11px;color:var(--text-meta)}
+
+/* 选中行的行尾 ⏎ 提示：强调色 chip（白字/紫底 ≈5.6:1），未选中时占位隐藏避免跳动 */
+.enter-chip{
+  flex:0 0 auto;width:22px;margin-left:8px;text-align:center;
+  font-size:11px;line-height:18px;border-radius:4px;
+  background:var(--accent);color:#fff;visibility:hidden;
+}
+.row.selected .enter-chip{visibility:visible}
+
+/* Enter 复制反馈：行内闪烁一次（250ms 内 opacity 1→0.3→1） */
+.row.flash .enter-chip{animation:chip-flash 250ms ease}
+@keyframes chip-flash{0%{opacity:1}50%{opacity:.3}100%{opacity:1}}
+
+/* ---------- 底部状态栏：一行极小字，无分隔线 ---------- */
+.status{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 2px 0;font-size:11px;color:var(--text-meta);user-select:none;
+}
+#statusCount.ok{color:var(--text)}
+.status.pulse{animation:status-pulse .3s ease}   /* 输入时闪烁一下 */
+@keyframes status-pulse{50%{opacity:.35}}
+
+/* ---------- 窗口外元素 ---------- */
+.mica-note{font-size:11px;color:rgba(255,255,255,.88);text-shadow:0 1px 3px rgba(0,0,0,.45)}
+.theme-toggle{
+  position:fixed;top:18px;right:18px;width:38px;height:38px;border-radius:50%;
+  border:1px solid rgba(255,255,255,.55);background:rgba(20,20,30,.38);color:#fff;
+  font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 14px rgba(0,0,0,.25);
+}
+.theme-toggle:hover{background:rgba(20,20,30,.55)}
+</style>
+</head>
+<body>
+
+<button class="theme-toggle" id="themeToggle" type="button" title="切换明暗主题">🌗</button>
+
+<div class="window" role="dialog" aria-label="FancyText">
+
+  <!-- 输入区：放大镜 + 18px 无边框输入 + 筛选/收藏/最近 -->
+  <div class="search">
+    <span class="glyph" aria-hidden="true">
+      <svg width="17" height="17" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.6" stroke="currentColor" stroke-width="1.5"/><path d="M10.6 10.6 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    </span>
+    <input id="input" value="你好 Hello" spellcheck="false" autocomplete="off" aria-label="输入要转换的文字">
+    <span class="filter-chip" title="筛选（静态示意）">全部 ▾</span>
+    <button class="icon-btn" type="button" title="收藏（示意）" aria-label="收藏">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 2.2l1.8 3.7 4 .6-2.9 2.8.7 4L8 11.4l-3.6 1.9.7-4L2.2 6.5l4-.6L8 2.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="icon-btn" type="button" title="最近（示意）" aria-label="最近">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.8" stroke="currentColor" stroke-width="1.4"/><path d="M8 5v3.2l2.2 1.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+
+  <!-- 样式列表：预览 + 右侧对齐 meta，选中行行尾显示 ⏎ chip -->
+  <div class="list" id="list" role="listbox" aria-label="样式列表">
+    <div class="row selected" role="option" aria-selected="true"><span class="preview">你҉好҉ H҉e҉l҉l҉o҉</span><span class="meta">菊花体 · 特效</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+    <div class="row" role="option" aria-selected="false"><span class="preview">H̷e̶l̸l̷o̵</span><span class="meta">魔鬼文字 · 特效</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+    <div class="row" role="option" aria-selected="false"><span class="preview">𝓗𝓮𝓵𝓵𝓸</span><span class="meta">粗花体 · 英文花体</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+    <div class="row" role="option" aria-selected="false"><span class="preview">𝔥𝔢𝔩𝔩𝔬</span><span class="meta">哥特体 · 英文花体</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+    <div class="row" role="option" aria-selected="false"><span class="preview">Ⓗⓔⓛⓛⓞ</span><span class="meta">泡泡字 · 英文花体</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+    <div class="row" role="option" aria-selected="false"><span class="preview">Ｈｅｌｌｏ</span><span class="meta">全角 · 英文花体</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+    <div class="row" role="option" aria-selected="false"><span class="preview">༺࿈ 你好 Hello ࿈༻</span><span class="meta">华丽翅膀 · 装饰</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+    <div class="row" role="option" aria-selected="false"><span class="preview">꧁༺ 你好 Hello ༻꧂</span><span class="meta">花藤字 · 装饰</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+    <div class="row" role="option" aria-selected="false"><span class="preview">oʅʅǝH 好你</span><span class="meta">倒转 · 变换</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+    <div class="row" role="option" aria-selected="false"><span class="preview">伱ぬ Hello</span><span class="meta">火星文 · 中文</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+    <div class="row" role="option" aria-selected="false"><span class="preview">nǐ hǎo</span><span class="meta">拼音 · 中文</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+    <div class="row" role="option" aria-selected="false"><span class="preview">5L2g5aW9IEhlbGxv</span><span class="meta">Base64 · 编码</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+    <div class="row" role="option" aria-selected="false"><span class="preview">.... . .-.. .-.. ---</span><span class="meta">摩斯电码 · 编码</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+    <div class="row" role="option" aria-selected="false"><span class="preview">⠓⠑⠇⠇⠕</span><span class="meta">盲文 · 编码</span><span class="enter-chip" aria-hidden="true">⏎</span></div>
+  </div>
+
+  <!-- 状态栏：一行极小字，无分隔线 -->
+  <div class="status" id="status">
+    <span>⏎ 复制 · Ctrl+D 收藏 · Esc 隐藏</span>
+    <span id="statusCount">14 个可用样式</span>
+  </div>
+
+</div>
+
+<div class="mica-note">Mica 材质为示意，实际由 DWM 系统渲染</div>
+
+<script>
+(function(){
+  /* ---------- 明暗主题切换：只改 data-theme，颜色全走 CSS 变量 ---------- */
+  var root=document.documentElement;
+  document.getElementById('themeToggle').addEventListener('click',function(){
+    root.dataset.theme=(root.dataset.theme==='dark')?'light':'dark';
+  });
+
+  var rows=[].slice.call(document.querySelectorAll('.row'));
+  var status=document.getElementById('status');
+  var statusCount=document.getElementById('statusCount');
+  var COUNT_TEXT=statusCount.textContent;
+  var sel=0, copyTimer=null;
+
+  /* ---------- 选中态迁移 ---------- */
+  function select(i,scroll){
+    rows[sel].classList.remove('selected');
+    rows[sel].setAttribute('aria-selected','false');
+    sel=((i%rows.length)+rows.length)%rows.length;
+    rows[sel].classList.add('selected');
+    rows[sel].setAttribute('aria-selected','true');
+    if(scroll!==false) rows[sel].scrollIntoView({block:'nearest'}); // 滚动跟随
+  }
+
+  /* ---------- 行内闪烁复制反馈：⏎ chip 闪烁一次 + 状态栏「已复制 ✓」1.2s ---------- */
+  function copyFlash(){
+    var row=rows[sel];
+    row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash');
+    setTimeout(function(){row.classList.remove('flash');},300);
+    statusCount.textContent='已复制 ✓';
+    statusCount.classList.add('ok');
+    clearTimeout(copyTimer);
+    copyTimer=setTimeout(function(){
+      statusCount.textContent=COUNT_TEXT;
+      statusCount.classList.remove('ok');
+    },1200);
+  }
+
+  rows.forEach(function(r,i){ r.addEventListener('click',function(){ select(i); }); });
+
+  document.addEventListener('keydown',function(e){
+    if(e.key==='ArrowDown'){ e.preventDefault(); select(sel+1); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); select(sel-1); }
+    else if(e.key==='Enter'){ e.preventDefault(); copyFlash(); }
+  });
+
+  /* ---------- 输入可编辑：不做真实转换，仅让状态栏脉冲一下 ---------- */
+  var input=document.getElementById('input');
+  input.addEventListener('input',function(){
+    status.classList.remove('pulse'); void status.offsetWidth; status.classList.add('pulse');
+  });
+  input.focus();
+})();
+</script>
+</body>
+</html>
