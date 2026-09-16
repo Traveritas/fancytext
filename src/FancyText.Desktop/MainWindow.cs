@@ -7,7 +7,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Media.Effects;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using FancyText.Core;
 using FancyText.Desktop.Helpers;
@@ -27,6 +27,7 @@ internal sealed class MainWindow : Window
 {
     private const int WM_HOTKEY = 0x0312;
     private const int WM_DWMCOLORIZATIONCOLORCHANGED = 0x0320;
+    private const int WM_SETTINGCHANGE = 0x001A;
     private const int WM_NCCALCSIZE = 0x0083;
     private const int HotkeyId = 0x4654; // "FT"，进程内唯一即可
     private const int PreviewMaxGraphemes = 64;
@@ -55,19 +56,31 @@ internal sealed class MainWindow : Window
     private readonly UsageState _usage;
     private readonly DispatcherTimer _debounce;
     private readonly DispatcherTimer _trimTimer;
+    private readonly DispatcherTimer _copyTimer; // 复制反馈：1.2s 后状态栏恢复计数文本
     private HotkeyBinding _hotkey;
 
     // 可被 BuildUi 整体重建（主题切换时全量换新实例，避免逐控件回填笔刷）
+    private DockPanel _card = new();
     private TextBox _inputBox = new();
-    private Border _inputBoxBorder = new();
     private ListBox _listBox = new();
     private TextBlock _statusCount = new();
+    private TextBlock _emptyHint = new();
+    private ToggleButton _filterChip = new();
+    private TextBlock _filterChipLabel = new();
+    private ToggleButton _favButton = new();
+    private ToggleButton _recentButton = new();
+    private Popup _filterPopup = new();
+    private DateTime _popupClosedAt = DateTime.MinValue; // 下拉刚关闭的时间点（250ms 内对 chip 的按下视为"再点收起"，见 BuildUi）
+    private List<(FilterOption Option, TextBlock Label, TextBlock Check)> _menuItems = [];
     private List<StyleListItem> _currentItems = [];
     private FilterOption _filter = FilterOption.All;
+    private string _lastCountText = string.Empty; // 计数文本真源：复制提示 1.2s 后原样恢复
     private HwndSource? _hwndSource;
     private bool _hotkeyRegistered;
     private bool _closed;
     private bool _activatedSinceShown; // 防 Show 后未及激活就被 Deactivated"闪没"
+    private bool _micaActive;          // Mica 材质生效中（窗口底透明，透出 DWM 系统材质）
+    private bool _hiding;              // 退出动画播放中（播完才真正 Hide；期间唤出则取消）
 
     public MainWindow(UsageState usage)
     {
@@ -75,6 +88,7 @@ internal sealed class MainWindow : Window
         _settings = DesktopSettings.Load();
         _hotkey = DesktopSettings.ParseHotkey(_settings.Hotkey) ?? HotkeyBinding.Default;
         _theme = ResolveTheme(_settings);
+        UiAnimation.UserPreference = !_settings.ReduceMotion; // 「减少动效」即时生效（BuildUi/模板动画建样式时求值）
 
         _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(DebounceMs) };
         _debounce.Tick += (_, _) => { _debounce.Stop(); RebuildList(); };
@@ -83,9 +97,12 @@ internal sealed class MainWindow : Window
         _trimTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
         _trimTimer.Tick += (_, _) => { _trimTimer.Stop(); TrimWorkingSet(); };
 
+        _copyTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+        _copyTimer.Tick += (_, _) => { _copyTimer.Stop(); _statusCount.Text = _lastCountText; };
+
         Title = Loc.S(Lang, "花式文字", "Fancy Text");
         Width = 540;
-        Height = 640;
+        Height = 620;
         MinWidth = 380;
         MinHeight = 420;
         WindowStyle = WindowStyle.None;       // 无边框弹窗（圆角与阴影由 DWM 提供，见 ApplySystemChrome）
@@ -150,7 +167,7 @@ internal sealed class MainWindow : Window
     private void ApplyThemeToWindow()
     {
         Foreground = _theme.Text;
-        Background = _theme.WindowBackground;
+        Background = _micaActive ? Brushes.Transparent : _theme.WindowBackground;
     }
 
     /// <summary>
@@ -174,11 +191,47 @@ internal sealed class MainWindow : Window
             var noColor = unchecked((int)0xFFFFFFFE); // DWMWA_COLOR_NONE
             _ = NativeMethods.DwmSetWindowAttribute(
                 handle, DWMWA_BORDER_COLOR, ref noColor, sizeof(int));
+
+            ApplyBackdrop(handle);
         }
         catch (Exception ex)
         {
             LogDiag($"dwm-chrome: 设置圆角失败（不影响使用） {ex.GetType().Name}");
         }
+    }
+
+    /// <summary>
+    /// 背景材质：Mica 或纯色。Mica 只在**深色应用主题**下启用——实测 Win11 26100 上本窗口形态
+    /// （WindowStyle.None + NCCALCSIZE 0）的 Mica 色调恒定偏深，不跟随沉浸明暗属性；浅色主题
+    /// 配深色 Mica 会破坏对比度，而浅色 Mica 与纯色观感本就几乎一致，故浅色直接走纯色。
+    /// 其余门槛：Win11 22H2+（Build 22621）且设置 Backdrop=mica。HRESULT==0 才切透明底；
+    /// 失败/老系统/纯色/浅色主题：保持主题窗口底色，无感知回退。
+    /// Mica 下文字抗锯齿从 ClearType 退化为灰阶（WPF 透明表面已知行为）——设置页留「纯色」逃生门。
+    /// </summary>
+    private void ApplyBackdrop(IntPtr handle)
+    {
+        const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+        var dark = _theme.Dark ? 1 : 0;
+        _ = NativeMethods.DwmSetWindowAttribute(handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
+
+        _micaActive = false;
+        if (Environment.OSVersion.Version.Build >= 22621 &&
+            _theme.Dark && // 见方法头注释：本窗口形态 Mica 色调恒深，只在深色主题启用
+            string.Equals(_settings.Backdrop, "mica", StringComparison.OrdinalIgnoreCase))
+        {
+            const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+            var mica = 2; // DWMSBT_MAINWINDOW
+            _micaActive = NativeMethods.DwmSetWindowAttribute(
+                handle, DWMWA_SYSTEMBACKDROP_TYPE, ref mica, sizeof(int)) == 0;
+        }
+
+        Background = _micaActive ? Brushes.Transparent : _theme.WindowBackground;
+        if (_micaActive && (_hwndSource ?? HwndSource.FromHwnd(handle)) is { } source)
+        {
+            source.CompositionTarget.BackgroundColor = Colors.Transparent; // 客户区透明，透出 DWM 材质
+        }
+
+        LogDiag($"backdrop: {(_micaActive ? "mica" : "solid")} build={Environment.OSVersion.Version.Build}");
     }
 
     /// <summary>托盘提示用：当前生效的热键显示文本（如 Ctrl+Alt+F）。</summary>
@@ -210,12 +263,13 @@ internal sealed class MainWindow : Window
         };
         header.MouseLeftButtonDown += OnHeaderDrag;
 
-        // 顶部：输入框。做法：默认 TextBox（IME/编辑器链路保持原生完整——自定义模板曾导致无法输入）
-        // 外包一层圆角 Border 拿回观感；聚焦变色走事件，不碰模板。
+        // 输入行（E 方向）：放大镜 + 无边框大输入 + 筛选下拉/收藏/最近，行下 1px 细线。
+        // 做法：默认 TextBox（IME/编辑器链路保持原生完整——自定义模板曾导致无法输入），
+        // 不包圆角盒、不换笔刷；聚焦反馈 = 等宽 accent 线的 Opacity 动画（预着色层，红线合规）。
         _inputBox = new TextBox
         {
             FontSize = 18,
-            Padding = new Thickness(11, 9, 11, 9),
+            Padding = new Thickness(2),
             VerticalContentAlignment = VerticalAlignment.Center,
             // 注意：输入框不设字体回退链——WPF 会把字体名传给 IME（组合窗口字体），
             // 链式多字体名超过 LOGFONT 32 字符上限是非法名，会导致 IME 组合失败、无法打字（能删不能输）。
@@ -227,53 +281,179 @@ internal sealed class MainWindow : Window
         };
         _inputBox.TextChanged += (_, _) => { _debounce.Stop(); _debounce.Start(); }; // 每次击键重置 150ms 防抖
 
-        _inputBoxBorder = new Border
+        var lang = Lang;
+        var ghostStyle = CreateGhostButtonStyle();
+        var searchIcon = MakeIconGlyph("\uE721"); // 放大镜
+        searchIcon.Foreground = _theme.Meta;
+        searchIcon.Margin = new Thickness(2, 0, 8, 0);
+
+        // 筛选状态机：_filter 是唯一真源。点菜单分类 → ⭐/🕘 取消勾选；点图标 → 标签联动；任一变化 → RebuildList。
+        var catalog = FilterOption.Catalog(lang).ToArray();
+        _filter = catalog.First(o => o.Equals(_filter)); // 换成新语言实例（标签随语言，相等性只看语义键）
+        _menuItems = [];
+
+        _filterChipLabel = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        _filterChip = new ToggleButton
         {
-            CornerRadius = new CornerRadius(9),
-            BorderThickness = new Thickness(1),
-            BorderBrush = _theme.WindowBorder,
-            Background = _theme.InputIdleBackground,
-            Padding = new Thickness(2),
-            Margin = new Thickness(14, 8, 14, 6),
-            Child = _inputBox,
-        };
-        _inputBox.GotKeyboardFocus += (_, _) =>
-        {
-            _inputBoxBorder.BorderBrush = _theme.Primary;
-            _inputBoxBorder.Background = _theme.InputFocusBackground;
-        };
-        _inputBox.LostKeyboardFocus += (_, _) =>
-        {
-            _inputBoxBorder.BorderBrush = _theme.WindowBorder;
-            _inputBoxBorder.Background = _theme.InputIdleBackground;
+            Content = _filterChipLabel,
+            Style = ghostStyle, // 幽灵风：透明底（前景色/悬停覆盖层由样式驱动），不再有胶囊块
+            Padding = new Thickness(9, 5, 9, 5),
+            Background = Brushes.Transparent,
+            ToolTip = Loc.S(lang, "筛选分类", "Filter category"),
+            Cursor = Cursors.Hand,
+            Margin = new Thickness(6, 0, 2, 0),
         };
 
-        // 分类筛选：全部 / 收藏 / 最近 / 六个分类，胶囊形单选组
-        var filterPanel = new WrapPanel { Margin = new Thickness(12, 0, 12, 4) };
-        var lang = Lang;
-        var options = FilterOption.Catalog(lang).ToArray();
-        for (var i = 0; i < options.Length; i++)
+        // 「全部 ▾」真实下拉：Popup 点窗外自动收起（StaysOpen=false）；仅此小浮层 AllowsTransparency（圆角需要），禁任何 Effect。
+        _filterPopup = new Popup
         {
-            var chip = new RadioButton
+            PlacementTarget = _filterChip,
+            Placement = PlacementMode.Custom, // 右对齐 chip 下沿（菜单比 chip 宽，默认左对齐会顶到窗口右边）
+            AllowsTransparency = true,
+            StaysOpen = false,
+            PopupAnimation = PopupAnimation.None,
+        };
+        _filterPopup.CustomPopupPlacementCallback = (Size popupSize, Size targetSize, Point _) =>
+            new[] { new CustomPopupPlacement(new Point(targetSize.Width - popupSize.Width, targetSize.Height + 6), PopupPrimaryAxis.Horizontal) };
+
+        var menuPanel = new StackPanel();
+        foreach (var option in catalog)
+        {
+            if (option.Pinned || option.Recent)
             {
-                Content = options[i].Label,
-                GroupName = "CategoryFilter",
-                Tag = options[i],
-                Style = CreateChipStyle(),
-            };
-            if (options[i].Equals(_filter))
-            {
-                chip.IsChecked = true; // 保留当前筛选（先设再挂事件，避免构造期触发重建）
+                continue; // 菜单只放 全部 + 六分类（收藏/最近走图标按钮）
             }
 
-            chip.Checked += OnFilterChecked;
-            filterPanel.Children.Add(chip);
+            var label = new TextBlock { Text = option.Label, FontSize = 12, Foreground = _theme.Text, VerticalAlignment = VerticalAlignment.Center };
+            var check = new TextBlock { Text = "✓", FontSize = 11, Foreground = _theme.Primary, Opacity = 0, Margin = new Thickness(14, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            var content = new DockPanel();
+            DockPanel.SetDock(check, Dock.Right);
+            content.Children.Add(check);
+            content.Children.Add(label);
+            var item = new ToggleButton
+            {
+                Content = content,
+                Style = ghostStyle,
+                Tag = option,
+                Padding = new Thickness(10, 6, 10, 6),
+                Background = Brushes.Transparent,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Cursor = Cursors.Hand,
+            };
+            item.Click += (_, _) =>
+            {
+                _filter = option;
+                item.IsChecked = false; // 选中态不走 Toggle，统一由 SyncFilterVisuals 画 ✓
+                _filterPopup.IsOpen = false;
+                ApplyFilterChange();
+            };
+            menuPanel.Children.Add(item);
+            _menuItems.Add((option, label, check));
         }
+
+        _filterPopup.Child = new Border
+        {
+            CornerRadius = new CornerRadius(6),
+            BorderThickness = new Thickness(1),
+            BorderBrush = _theme.WindowBorder,
+            Background = _theme.FlyoutBackground,
+            Padding = new Thickness(4),
+            MinWidth = 132,
+            Child = menuPanel,
+        };
+
+        _filterChip.Checked += (_, _) => _filterPopup.IsOpen = true;
+        _filterChip.Unchecked += (_, _) => _filterPopup.IsOpen = false;
+        _filterPopup.Closed += (_, _) =>
+        {
+            _popupClosedAt = DateTime.UtcNow;
+            if (_filterChip.IsChecked == true)
+            {
+                _filterChip.IsChecked = false;
+            }
+        };
+        // 菜单开着时再点 chip = 收起。事件顺序坑：StaysOpen=false 的 Popup 在鼠标按下时先自行关闭
+        // （Closed 已把 chip 复位），随后这次按下落到 chip 上又会把它勾上重开——
+        // 所以不按 IsOpen 判断，而是吞掉"刚关闭 250ms 内"对 chip 的按下。
+        _filterChip.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            if ((DateTime.UtcNow - _popupClosedAt).TotalMilliseconds < 250)
+            {
+                e.Handled = true;
+            }
+        };
+
+        _favButton = new ToggleButton
+        {
+            Content = MakeIconGlyph("\uE734"), // ⭐ 收藏筛选
+            Style = ghostStyle,
+            Width = 28,
+            Height = 28,
+            Background = Brushes.Transparent,
+            ToolTip = Loc.S(lang, "收藏筛选", "Pinned filter"),
+            Cursor = Cursors.Hand,
+            Margin = new Thickness(2, 0, 2, 0),
+        };
+        _recentButton = new ToggleButton
+        {
+            Content = MakeIconGlyph("\uE81C"), // 🕘 最近筛选
+            Style = ghostStyle,
+            Width = 28,
+            Height = 28,
+            Background = Brushes.Transparent,
+            ToolTip = Loc.S(lang, "最近筛选", "Recent filter"),
+            Cursor = Cursors.Hand,
+            Margin = new Thickness(2, 0, 0, 0),
+        };
+        // Click 只在用户操作时触发（程序改 IsChecked 不触发），天然无重入；再点取消 → 回「全部」
+        _favButton.Click += (_, _) =>
+        {
+            _filter = _favButton.IsChecked == true ? catalog.First(o => o.Pinned) : catalog[0];
+            ApplyFilterChange();
+        };
+        _recentButton.Click += (_, _) =>
+        {
+            _filter = _recentButton.IsChecked == true ? catalog.First(o => o.Recent) : catalog[0];
+            ApplyFilterChange();
+        };
+
+        var searchRow = new Grid { Margin = new Thickness(0, 0, 0, 13) }; // 内容与行下细线之间 12px 留白（+1px 线位）
+        searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        searchRow.Children.Add(searchIcon);
+        Grid.SetColumn(_inputBox, 1);
+        searchRow.Children.Add(_inputBox);
+        Grid.SetColumn(_filterChip, 2);
+        searchRow.Children.Add(_filterChip);
+        Grid.SetColumn(_favButton, 3);
+        searchRow.Children.Add(_favButton);
+        Grid.SetColumn(_recentButton, 4);
+        searchRow.Children.Add(_recentButton);
+
+        // 行下 1px 细线（Separator）+ 等宽 accent 线（Opacity 0，聚焦时 167ms 淡入）
+        var accentLine = new Border
+        {
+            Height = 1,
+            Background = _theme.Primary,
+            Opacity = 0,
+            VerticalAlignment = VerticalAlignment.Bottom,
+        };
+        var searchBlock = new Grid { Margin = new Thickness(18, 2, 18, 0) };
+        searchBlock.Children.Add(searchRow);
+        searchBlock.Children.Add(new Border { Height = 1, Background = _theme.Separator, VerticalAlignment = VerticalAlignment.Bottom });
+        searchBlock.Children.Add(accentLine);
+        searchBlock.Children.Add(_filterPopup); // Popup 自带顶层 HWND，挂树位置无关渲染
+        _inputBox.GotKeyboardFocus += (_, _) => UiAnimation.BeginOpacity(accentLine, 1, UiAnimation.SelectMs);
+        _inputBox.LostKeyboardFocus += (_, _) => UiAnimation.BeginOpacity(accentLine, 0, UiAnimation.SelectMs);
+        SyncFilterVisuals();
 
         // 底部状态栏：左侧样式数，右侧键帽式快捷键提示（细线分隔，观感对齐现代小工具）
         _statusCount = new TextBlock
         {
-            FontSize = 11.5,
+            FontSize = 11,
             Foreground = _theme.Meta,
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
@@ -281,6 +461,7 @@ internal sealed class MainWindow : Window
         var hints = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         var hintPairs = new[]
         {
+            ("↑↓", Loc.S(lang, "浏览", "Browse")),
             ("Enter", Loc.S(lang, "复制", "Copy")),
             ("Ctrl+D", Loc.S(lang, "收藏", "Pin")),
             ("Ctrl+R", Loc.S(lang, "随机", "Random")),
@@ -297,7 +478,7 @@ internal sealed class MainWindow : Window
             var label = new TextBlock
             {
                 Text = action,
-                FontSize = 10.5,
+                FontSize = 11,
                 Foreground = _theme.Meta,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(4, 0, 0, 0),
@@ -307,14 +488,14 @@ internal sealed class MainWindow : Window
 
         var status = new DockPanel
         {
-            Margin = new Thickness(16, 8, 16, 12),
+            Margin = new Thickness(18, 10, 18, 12),
             Background = Brushes.Transparent,
         };
         var statusSeparator = new Border
         {
             Height = 1,
             Background = _theme.Separator,
-            Margin = new Thickness(0, 0, 0, 8),
+            Margin = new Thickness(0, 0, 0, 12),
         };
         var statusHost = new DockPanel();
         DockPanel.SetDock(statusSeparator, Dock.Top);
@@ -324,12 +505,12 @@ internal sealed class MainWindow : Window
         statusHost.Children.Add(_statusCount); // 最后一个子元素填充余下空间
         status.Children.Add(statusHost);
 
-        // 主体：样式列表，每项两行（大字预览 + 小字样式名/分类）
+        // 主体：样式列表，单行（左大字预览 + 右侧小字样式名/分类）
         _listBox = new ListBox
         {
             BorderThickness = new Thickness(0),
             Background = Brushes.Transparent,
-            Margin = new Thickness(8, 2, 8, 2),
+            Margin = new Thickness(18, 8, 18, 0),
             ItemTemplate = CreateItemTemplate(),
             ItemContainerStyle = CreateItemContainerStyle(),
             Foreground = _theme.Text,
@@ -337,19 +518,35 @@ internal sealed class MainWindow : Window
         ScrollViewer.SetHorizontalScrollBarVisibility(_listBox, ScrollBarVisibility.Disabled);
         _listBox.MouseDoubleClick += (_, _) => CommitSelected(); // 双击等价回车
 
-        // 根容器：DWM 已负责圆角/阴影/描边，这里只承载内容
-        var card = new DockPanel { Background = Background };
+        // 空状态：列表无结果时居中提示（Meta 色，167ms 淡入），不挡命中测试
+        _emptyHint = new TextBlock
+        {
+            FontSize = 12,
+            Foreground = _theme.Meta,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextAlignment = TextAlignment.Center,
+            IsHitTestVisible = false,
+            Opacity = 0,
+        };
+        var listHost = new Grid();
+        listHost.Children.Add(_listBox);
+        listHost.Children.Add(_emptyHint);
+
+        // 根容器：DWM 已负责圆角/阴影/描边，这里只承载内容；
+        // 底色只由 Window.Background 决定（纯色=主题色，Mica=透明透出材质，行为不变）
+        var card = new DockPanel { Background = Brushes.Transparent };
         card.Resources.Add(typeof(ScrollBar), CreateThinScrollBarStyle()); // 细滚动条全局生效
+        card.RenderTransform = new TranslateTransform(); // 唤出动画预建（播时只改 Y，无布局开销）
         DockPanel.SetDock(header, Dock.Top);
-        DockPanel.SetDock(_inputBoxBorder, Dock.Top);
-        DockPanel.SetDock(filterPanel, Dock.Top);
+        DockPanel.SetDock(searchBlock, Dock.Top);
         DockPanel.SetDock(status, Dock.Bottom);
         card.Children.Add(header);
-        card.Children.Add(_inputBoxBorder);
-        card.Children.Add(filterPanel);
+        card.Children.Add(searchBlock);
         card.Children.Add(status);
-        card.Children.Add(_listBox); // 列表占满余下空间
+        card.Children.Add(listHost); // 列表占满余下空间
 
+        _card = card;
         Content = card;
     }
 
@@ -368,6 +565,7 @@ internal sealed class MainWindow : Window
     {
         _settings = settings;
         _theme = ResolveTheme(settings);
+        UiAnimation.UserPreference = !_settings.ReduceMotion; // 与构造器同步：BuildUi 重建前更新总闸
         ApplyThemeToWindow();
         var input = _inputBox.Text;
         BuildUi();
@@ -376,6 +574,8 @@ internal sealed class MainWindow : Window
         {
             RebuildList();
         }
+
+        ApplySystemChrome(); // 主题明暗/背景材质可能变化：重设 DWM 属性（attr 20/38 随主题重设）
     }
 
     private void OnHeaderDrag(object sender, MouseButtonEventArgs e)
@@ -430,7 +630,7 @@ internal sealed class MainWindow : Window
         return style;
     }
 
-    /// <summary>筛选项：全部 / 收藏 / 最近 / 一个具体分类。相等性只看语义键（语言切换重建胶囊后选中态不丢）。</summary>
+    /// <summary>筛选项：全部 / 收藏 / 最近 / 一个具体分类。相等性只看语义键（语言切换重建筛选控件后选中态不丢）。</summary>
     private sealed record FilterOption(string Label, TextStyleCategory? Category = null, bool Pinned = false, bool Recent = false)
     {
         public static FilterOption All { get; } = new("全部");
@@ -450,52 +650,118 @@ internal sealed class MainWindow : Window
         public override int GetHashCode() => HashCode.Combine(Category, Pinned, Recent);
     }
 
-    /// <summary>胶囊形单选按钮模板：选中=主色底白字，悬停=浅紫。触发器后声明者优先，故悬停在前、选中在后。</summary>
-    private Style CreateChipStyle()
+    /// <summary>图标字体字形（搜索/收藏/最近）：Segoe Fluent Icons 优先，Win10 回退 MDL2。</summary>
+    private static TextBlock MakeIconGlyph(string glyph) => new()
     {
-        var style = new Style(typeof(RadioButton));
-        style.Setters.Add(new Setter(FrameworkElement.CursorProperty, Cursors.Hand));
-        style.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(0, 0, 6, 4)));
-        style.Setters.Add(new Setter(Control.FontSizeProperty, 12.5));
-        style.Setters.Add(new Setter(Control.ForegroundProperty, _theme.Text));
+        Text = glyph,
+        FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
+        FontSize = 14,
+        VerticalAlignment = VerticalAlignment.Center,
+    };
 
-        var border = new FrameworkElementFactory(typeof(Border));
-        border.Name = "ChipBorder";
-        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(11));
-        border.SetValue(Border.BackgroundProperty, _theme.ChipBackground);
-        border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
-        border.SetValue(Border.BorderBrushProperty, Brushes.Transparent);
-        border.SetValue(Border.PaddingProperty, new Thickness(10, 4, 10, 4));
+    /// <summary>筛选状态 → 控件视觉同步：chip 标签联动、⭐/🕘 勾选、菜单 ✓ 与强调色。</summary>
+    private void SyncFilterVisuals()
+    {
+        _filterChipLabel.Text = $"{_filter.Label} ▾";
+        _favButton.IsChecked = _filter.Pinned;
+        _recentButton.IsChecked = _filter.Recent;
+        foreach (var (option, label, check) in _menuItems)
+        {
+            var active = option.Equals(_filter);
+            check.Opacity = active ? 1 : 0;
+            label.Foreground = active ? _theme.Primary : _theme.Text;
+        }
+    }
+
+    /// <summary>筛选变化统一收口：同步视觉 → 重建列表 → 焦点回输入框（对齐设计稿）。</summary>
+    private void ApplyFilterChange()
+    {
+        SyncFilterVisuals();
+        RebuildList();
+        _inputBox.Focus();
+    }
+
+    /// <summary>
+    /// 覆盖层触发器：条件成立 → 目标元素 Opacity 淡入（Enter=HoldEnd 停终值），退出 → 淡出（Stop 回本地值摘钟）。
+    /// 系统动画总闸（<see cref="UiAnimation.Enabled"/>）在 BuildUi 建样式时求值：关闭则退化为瞬时 Setter
+    /// （模板触发器的 TargetName Setter 合规；运行期改系统开关随下次 BuildUi 重建生效）。
+    /// </summary>
+    private static Trigger OverlayTrigger(DependencyProperty property,
+        Func<double, FillBehavior, DoubleAnimation> fade, params string[] targets)
+    {
+        var trigger = new Trigger { Property = property, Value = true };
+        if (UiAnimation.Enabled)
+        {
+            foreach (var target in targets)
+            {
+                trigger.EnterActions.Add(UiAnimation.OpacityAction(target, fade(1, FillBehavior.HoldEnd)));
+                trigger.ExitActions.Add(UiAnimation.OpacityAction(target, fade(0, FillBehavior.Stop)));
+            }
+        }
+        else
+        {
+            foreach (var target in targets)
+            {
+                trigger.Setters.Add(new Setter(UIElement.OpacityProperty, 1d, target));
+            }
+        }
+
+        return trigger;
+    }
+
+    /// <summary>
+    /// 幽灵按钮模板（筛选 chip / ⭐🕘 图标 / 下拉菜单项共用）：底由 Background 决定，
+    /// hover 浅底 = 预着色 HoverItem 覆盖层的 Opacity 83ms 动画（绕开冻结笔刷不能做颜色动画的限制），
+    /// IsChecked 时文字变强调色（瞬时 Setter，非颜色过渡）。
+    /// </summary>
+    private Style CreateGhostButtonStyle()
+    {
+        var style = new Style(typeof(ToggleButton));
+        style.Setters.Add(new Setter(Control.ForegroundProperty, _theme.Meta));
+
+        var overlay = new FrameworkElementFactory(typeof(Border));
+        overlay.Name = "HoverOverlay";
+        overlay.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        overlay.SetValue(Border.BackgroundProperty, _theme.HoverItem);
+        overlay.SetValue(UIElement.OpacityProperty, 0d);
         var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
-        presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-        presenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-        border.AppendChild(presenter);
-        // TargetName 的 Setter 只能用于模板触发器；样式触发器只能作用于控件自身属性
-        // （原先放在 Style.Triggers 里会在 Seal 时抛 InvalidOperationException，导致整个窗口构建失败）
-        var template = new ControlTemplate(typeof(RadioButton)) { VisualTree = border };
+        presenter.SetValue(FrameworkElement.MarginProperty, new TemplateBindingExtension(Control.PaddingProperty));
+        presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, new TemplateBindingExtension(Control.HorizontalContentAlignmentProperty));
+        presenter.SetValue(FrameworkElement.VerticalAlignmentProperty, new TemplateBindingExtension(Control.VerticalContentAlignmentProperty));
+        var grid = new FrameworkElementFactory(typeof(Grid));
+        grid.SetValue(Panel.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
+        grid.AppendChild(overlay);
+        grid.AppendChild(presenter);
 
-        var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-        hover.Setters.Add(new Setter(Border.BackgroundProperty, _theme.HoverChip, "ChipBorder"));
-        template.Triggers.Add(hover);
-
-        var checkedTrigger = new Trigger { Property = ToggleButton.IsCheckedProperty, Value = true };
-        checkedTrigger.Setters.Add(new Setter(Border.BackgroundProperty, _theme.Primary, "ChipBorder"));
-        checkedTrigger.Setters.Add(new Setter(Border.BorderBrushProperty, _theme.Primary, "ChipBorder"));
-        template.Triggers.Add(checkedTrigger);
-
+        var template = new ControlTemplate(typeof(ToggleButton)) { VisualTree = grid };
+        template.Triggers.Add(OverlayTrigger(UIElement.IsMouseOverProperty, UiAnimation.Fade83, "HoverOverlay"));
         style.Setters.Add(new Setter(Control.TemplateProperty, template));
 
-        var checkedForeground = new Trigger { Property = ToggleButton.IsCheckedProperty, Value = true };
-        checkedForeground.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
-        style.Triggers.Add(checkedForeground);
+        // hover 在前、选中在后：同时成立时强调色优先（触发器后声明者优先）
+        var hoverForeground = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hoverForeground.Setters.Add(new Setter(Control.ForegroundProperty, _theme.Text));
+        style.Triggers.Add(hoverForeground);
+        var checkedTrigger = new Trigger { Property = ToggleButton.IsCheckedProperty, Value = true };
+        checkedTrigger.Setters.Add(new Setter(Control.ForegroundProperty, _theme.Primary));
+        style.Triggers.Add(checkedTrigger);
 
         return style;
     }
 
-    /// <summary>列表项两行数据模板：第一行转换预览（大字号），第二行样式名（⭐ 收藏前缀）+ 分类。</summary>
+    /// <summary>列表项单行数据模板（E 方向）：左=转换预览（大字号绝对主角），右=样式名/分类（11px 灰，右对齐）。</summary>
     private DataTemplate CreateItemTemplate()
     {
-        var panel = new FrameworkElementFactory(typeof(StackPanel));
+        var panel = new FrameworkElementFactory(typeof(DockPanel));
+
+        var meta = new FrameworkElementFactory(typeof(PreviewTextBlock.MetaTextBlock));
+        meta.SetBinding(PreviewTextBlock.TextProperty, new Binding(nameof(StyleListItem.Meta)));
+        meta.SetValue(TextBlock.FontSizeProperty, 11d);
+        meta.SetValue(TextBlock.ForegroundProperty, _theme.Meta);
+        meta.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+        meta.SetValue(FrameworkElement.MarginProperty, new Thickness(12, 0, 0, 0));
+        meta.SetValue(FrameworkElement.MaxWidthProperty, 220d); // 长分类名（含样式包名）不挤爆预览
+        meta.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        meta.SetValue(DockPanel.DockProperty, Dock.Right);
 
         var preview = new FrameworkElementFactory(typeof(PreviewTextBlock));
         preview.SetBinding(PreviewTextBlock.TextProperty, new Binding(nameof(StyleListItem.PreviewText)));
@@ -503,66 +769,50 @@ internal sealed class MainWindow : Window
         preview.SetValue(TextBlock.FontWeightProperty, FontWeights.Medium);
         preview.SetValue(TextBlock.FontFamilyProperty, new FontFamily(PreviewFontChain)); // 花式字符回退链，防豆腐块
         preview.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
-        preview.SetValue(TextBlock.MarginProperty, new Thickness(0, 0, 0, 3));
+        preview.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
 
-        var meta = new FrameworkElementFactory(typeof(PreviewTextBlock.MetaTextBlock));
-        meta.SetBinding(PreviewTextBlock.TextProperty, new Binding(nameof(StyleListItem.Meta)));
-        meta.SetValue(TextBlock.FontSizeProperty, 11.5d);
-        meta.SetValue(TextBlock.ForegroundProperty, _theme.Meta);
-        meta.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
-
-        panel.AppendChild(preview);
         panel.AppendChild(meta);
+        panel.AppendChild(preview); // 预览填充余下宽度（TextTrimming 需要受限宽度）
         return new DataTemplate(typeof(StyleListItem)) { VisualTree = panel };
     }
 
-    /// <summary>列表项容器：圆角卡片，悬停浅紫、选中淡紫底（淡底保证灰色小字仍可读）。</summary>
+    /// <summary>
+    /// 列表项容器（E 方向）：圆角行 + 双层预着色覆盖层——hover 层（83ms）与选中层（167ms）只做 Opacity 动画
+    /// （冻结笔刷不能做 ColorAnimation，覆盖层方案是红线合规替代）。
+    /// </summary>
     private Style CreateItemContainerStyle()
     {
         var style = new Style(typeof(ListBoxItem));
-        style.Setters.Add(new Setter(Control.MarginProperty, new Thickness(0, 0, 0, 4)));
+        style.Setters.Add(new Setter(Control.MarginProperty, new Thickness(0, 0, 0, 2)));
+        style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(12, 9, 12, 9)));
         style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch)); // 拉满才有 TextTrimming
         style.Setters.Add(new Setter(Control.ForegroundProperty, _theme.Text));
 
-        var border = new FrameworkElementFactory(typeof(Border));
-        border.Name = "ItemBorder";
-        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(7));
-        border.SetValue(Border.BackgroundProperty, Brushes.Transparent);
-        border.SetValue(Border.PaddingProperty, new Thickness(12, 8, 12, 8));
+        var hoverOverlay = new FrameworkElementFactory(typeof(Border));
+        hoverOverlay.Name = "HoverOverlay";
+        hoverOverlay.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        hoverOverlay.SetValue(Border.BackgroundProperty, _theme.HoverItem);
+        hoverOverlay.SetValue(UIElement.OpacityProperty, 0d);
 
-        // 选中时左侧出现主色竖条（视觉锚点，比整块高亮更克制）
-        var accent = new FrameworkElementFactory(typeof(Border));
-        accent.Name = "AccentBar";
-        accent.SetValue(Border.WidthProperty, 3d);
-        accent.SetValue(Border.CornerRadiusProperty, new CornerRadius(2));
-        accent.SetValue(Border.BackgroundProperty, _theme.Primary);
-        accent.SetValue(Border.MarginProperty, new Thickness(0, 6, 0, 6));
-        accent.SetValue(Border.VerticalAlignmentProperty, VerticalAlignment.Stretch);
-        accent.SetValue(Border.HorizontalAlignmentProperty, HorizontalAlignment.Left);
-        accent.SetValue(UIElement.OpacityProperty, 0d); // 默认隐藏，选中触发器点亮
-        var accentHost = new FrameworkElementFactory(typeof(Border)); // 叠放层：预览内容之上不占布局
-        accentHost.SetValue(Border.CornerRadiusProperty, new CornerRadius(7));
-        accentHost.AppendChild(accent);
+        var selectedOverlay = new FrameworkElementFactory(typeof(Border));
+        selectedOverlay.Name = "SelectedOverlay";
+        selectedOverlay.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        selectedOverlay.SetValue(Border.BackgroundProperty, _theme.SelectedItem);
+        selectedOverlay.SetValue(UIElement.OpacityProperty, 0d);
 
         var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
-        presenter.SetValue(FrameworkElement.MarginProperty, new Thickness(5, 0, 0, 0));
+        presenter.SetValue(FrameworkElement.MarginProperty, new TemplateBindingExtension(Control.PaddingProperty));
+
         var grid = new FrameworkElementFactory(typeof(Grid));
+        grid.AppendChild(hoverOverlay);
+        grid.AppendChild(selectedOverlay); // 选中层在 hover 层之上（不透明，选中行 hover 不叠加）
         grid.AppendChild(presenter);
-        grid.AppendChild(accentHost);
-        border.AppendChild(grid);
 
-        // TargetName 的 Setter 只能放在模板触发器里（Style.Triggers 会抛 InvalidOperationException，
+        // TargetName 的动画/Setter 只能放在模板触发器里（Style.Triggers 会抛 InvalidOperationException，
         // 且异常发生在容器生成时——正好把整次 Show() 带崩，窗口完全弹不出来）
-        var template = new ControlTemplate(typeof(ListBoxItem)) { VisualTree = border };
-
-        var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-        hover.Setters.Add(new Setter(Border.BackgroundProperty, _theme.HoverItem, "ItemBorder"));
-        template.Triggers.Add(hover);
-
-        var selected = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true };
-        selected.Setters.Add(new Setter(Border.BackgroundProperty, _theme.SelectedItem, "ItemBorder"));
-        selected.Setters.Add(new Setter(UIElement.OpacityProperty, 1d, "AccentBar"));
-        template.Triggers.Add(selected);
+        var template = new ControlTemplate(typeof(ListBoxItem)) { VisualTree = grid };
+        template.Triggers.Add(OverlayTrigger(UIElement.IsMouseOverProperty, UiAnimation.Fade83, "HoverOverlay"));
+        template.Triggers.Add(OverlayTrigger(ListBoxItem.IsSelectedProperty, UiAnimation.Fade167, "SelectedOverlay"));
 
         style.Setters.Add(new Setter(Control.TemplateProperty, template));
 
@@ -580,6 +830,7 @@ internal sealed class MainWindow : Window
         }
 
         _trimTimer.Stop(); // 取消待执行的修剪：唤出路径需要全部页面驻留
+        CancelHideAnimation(); // 退出动画播到一半被唤出：恢复完整可见，按"已显示"继续
 
         if (IsVisible)
         {
@@ -613,12 +864,27 @@ internal sealed class MainWindow : Window
         }
 
         _activatedSinceShown = false;
+
+        // 唤出动画起点（终点 = 本地值 1/0；系统动画关闭时 UiAnimation 直接置终点，等价无动画）
+        _card.Opacity = 0;
+        var rise = _card.RenderTransform as TranslateTransform;
+        if (rise is not null)
+        {
+            rise.Y = -12;
+        }
+
         Show();
 
         // 经 EnsureHandle() 预创建句柄的窗口，WPF 的显示状态机在首次/重复唤出时
         // 可能让 Activate() 抛"显示 Window 之前无法调用"——防御处理，不让它吞掉整次唤出
         SafeActivate();
-        FocusInput();
+        FocusInput(); // 动画期间照常聚焦（立即可输入）
+
+        UiAnimation.BeginOpacity(_card, 1, UiAnimation.SelectMs);
+        if (rise is not null)
+        {
+            UiAnimation.BeginTranslateY(rise, 0, UiAnimation.ShowMs);
+        }
     }
 
     private void SafeActivate()
@@ -774,12 +1040,63 @@ internal sealed class MainWindow : Window
         }
     }
 
-    /// <summary>隐藏并安排工作集修剪（1.5s 后执行，期间唤出则取消）。所有隐藏路径统一走这里。</summary>
+    /// <summary>隐藏并安排工作集修剪（1.5s 后执行，期间唤出则取消）。所有隐藏路径统一走这里。
+    /// 退出动画与进入同款（淡出 + 上移，更快一档）：播完才真正 Hide；系统动画关闭时直接隐藏。</summary>
     private void HideAndScheduleTrim()
     {
+        _copyTimer.Stop(); // 复制反馈的恢复计时随隐藏作废（隐藏后无活跃时钟）
+        if (_hiding || !IsVisible)
+        {
+            return; // 退出动画播放中/已隐藏：不重复触发
+        }
+
+        if (!UiAnimation.Enabled)
+        {
+            FinishHide();
+            return;
+        }
+
+        _hiding = true;
+        if (_card.RenderTransform is TranslateTransform rise)
+        {
+            UiAnimation.BeginTranslateY(rise, -12, UiAnimation.HideMs);
+        }
+        UiAnimation.BeginOpacity(_card, 0, UiAnimation.HideMs, FinishHide);
+    }
+
+    /// <summary>退出动画终点：复位动画与终值后真正隐藏（唤出时再设入场起点）。</summary>
+    private void FinishHide()
+    {
+        _hiding = false;
+        _card.BeginAnimation(UIElement.OpacityProperty, null);
+        _card.Opacity = 1;
+        if (_card.RenderTransform is TranslateTransform rise)
+        {
+            rise.BeginAnimation(TranslateTransform.YProperty, null);
+            rise.Y = 0;
+        }
+
         Hide();
         _trimTimer.Stop();
         _trimTimer.Start();
+    }
+
+    /// <summary>唤出打断退出动画：摘掉隐藏动画与回调，恢复完整可见，随后按"已显示"处理。</summary>
+    private void CancelHideAnimation()
+    {
+        if (!_hiding)
+        {
+            return;
+        }
+
+        _hiding = false;
+        _card.BeginAnimation(UIElement.OpacityProperty, null);
+        _card.Opacity = 1;
+        if (_card.RenderTransform is TranslateTransform rise)
+        {
+            rise.BeginAnimation(TranslateTransform.YProperty, null);
+            rise.Y = 0;
+        }
     }
 
     /// <summary>
@@ -802,15 +1119,6 @@ internal sealed class MainWindow : Window
     }
 
     // ================================================== 列表构建 ==================================================
-
-    private void OnFilterChecked(object sender, RoutedEventArgs e)
-    {
-        if (sender is RadioButton { Tag: FilterOption option })
-        {
-            _filter = option;
-            RebuildList();
-        }
-    }
 
     private void OnUsageChanged()
     {
@@ -877,9 +1185,20 @@ internal sealed class MainWindow : Window
         }
 
         var truncated = !string.Equals(previewInput, text, StringComparison.Ordinal);
-        _statusCount.Text = Loc.S(Lang,
+        _lastCountText = Loc.S(Lang,
             $"{items.Count} 个可用样式" + (truncated ? $" · 预览仅前 {PreviewMaxGraphemes} 字，回车复制完整结果" : string.Empty),
             $"{items.Count} styles" + (truncated ? $" · preview shows first {PreviewMaxGraphemes} graphemes; Enter copies the full result" : string.Empty));
+        _statusCount.Text = _lastCountText;
+
+        // 空状态：167ms 淡入/淡出（无结果时居中提示，收藏页给专属引导）
+        if (items.Count == 0)
+        {
+            _emptyHint.Text = _filter.Pinned
+                ? Loc.S(Lang, "收藏为空，Ctrl+D 收藏常用样式", "No pinned styles yet — Ctrl+D to pin the selected style")
+                : Loc.S(Lang, "无可用样式", "No styles available");
+        }
+
+        UiAnimation.BeginOpacity(_emptyHint, items.Count == 0 ? 1 : 0, UiAnimation.SelectMs);
     }
 
     private IEnumerable<TextStyle> StylesForFilter(FilterOption filter)
@@ -948,7 +1267,15 @@ internal sealed class MainWindow : Window
 
                 break;
             case Key.Escape:
-                HideAndScheduleTrim();
+                if (_filterPopup.IsOpen)
+                {
+                    _filterPopup.IsOpen = false; // 菜单开着先关菜单，再按才隐藏窗口
+                }
+                else
+                {
+                    HideAndScheduleTrim();
+                }
+
                 e.Handled = true;
                 break;
             case Key.D when Keyboard.Modifiers == ModifierKeys.Control:
@@ -996,13 +1323,15 @@ internal sealed class MainWindow : Window
         }
 
         _usage.RecordUse(selected.StyleId);
+
+        _copyTimer.Stop();
+        _statusCount.Text = _settings.HideAfterCopy
+            ? Loc.S(Lang, "已复制 ✓", "Copied ✓")
+            : Loc.S(Lang, "已复制 ✓ 可继续换样式（Enter 重复制）", "Copied ✓ pick another style (Enter to copy again)");
+        _copyTimer.Start(); // 1.2s 后恢复计数文本（若随即隐藏，HideAndScheduleTrim 会停掉它）
         if (_settings.HideAfterCopy)
         {
-            HideAndScheduleTrim();
-        }
-        else
-        {
-            _statusCount.Text = Loc.S(Lang, "已复制 ✓ 可继续换样式（Enter 重复制）", "Copied ✓ pick another style (Enter to copy again)");
+            HideAndScheduleTrim(); // 退出动画统一在隐藏路径播放（淡出+上移，与进入同款）
         }
 
         return true;
@@ -1159,6 +1488,15 @@ internal sealed class MainWindow : Window
             // 系统强调色变化（含"从壁纸自动取色"刷新）：跟随系统模式下即时换肤
             ApplySettings(_settings);
         }
+        else if (msg == WM_SETTINGCHANGE && string.Equals(_settings.Theme, "system", StringComparison.OrdinalIgnoreCase))
+        {
+            // 系统深浅色切换：跟随系统主题模式下即时换肤
+            // （WM_SETTINGCHANGE 触发源很多——区域/策略等都会发，明暗真变了才整体重建）
+            if (IsSystemDark() != _theme.Dark)
+            {
+                ApplySettings(_settings);
+            }
+        }
         else if (msg == WM_NCCALCSIZE && wParam.ToInt64() == 1)
         {
             // 无边框窗口保留 WS_THICKFRAME（拖边缩放 + DWM 阴影）时，系统会在顶部画一条残边；
@@ -1227,10 +1565,14 @@ internal sealed class MainWindow : Window
         public PreviewTextBlock(bool forMeta)
         {
             _baseFont = forMeta ? MetaBaseFont : BaseFont;
-            // TextBlock.OnPropertyChanged 是密封的，只能用描述符监听 Text 变化
+            // TextBlock.OnPropertyChanged 是密封的，只能用描述符监听 Text 变化；
+            // 描述符持有本实例引用——Unloaded（虚拟化回收/BuildUi 重建）时摘掉，否则旧实例被静态描述符泄漏
             System.ComponentModel.DependencyPropertyDescriptor
                 .FromProperty(TextProperty, typeof(TextBlock))
                 .AddValueChanged(this, OnTextChanged);
+            Unloaded += (_, _) => System.ComponentModel.DependencyPropertyDescriptor
+                .FromProperty(TextProperty, typeof(TextBlock))
+                .RemoveValueChanged(this, OnTextChanged);
         }
 
         private void OnTextChanged(object? sender, EventArgs e)

@@ -1,7 +1,5 @@
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using FancyText.Core;
-using FancyText.Desktop.Helpers;
 
 using WinForms = System.Windows.Forms;
 
@@ -17,13 +15,11 @@ internal sealed class TrayIconController : IDisposable
     private readonly WinForms.NotifyIcon _notifyIcon = new();
     private readonly WinForms.ContextMenuStrip _menu = new();
     private readonly Icon _icon;
-    private IntPtr _iconHandle; // bitmap.GetHicon() 的句柄不归 Icon 管，退出时自毁
 
     public TrayIconController(MainWindow window, Action openSettings)
     {
         _window = window;
         _icon = CreateIcon();
-        _iconHandle = _icon.Handle;
 
         var lang = _window.Lang;
         var openItem = new WinForms.ToolStripMenuItem(Loc.S(lang, "打开(&O)", "&Open"));
@@ -65,23 +61,11 @@ internal sealed class TrayIconController : IDisposable
     private void UpdateTooltip() => _notifyIcon.Text =
         Loc.S(_window.Lang, $"花式文字 · {_window.HotkeyDisplay} 唤出", $"Fancy Text · {_window.HotkeyDisplay} to open");
 
-    /// <summary>图标用代码画：主色方块 + 白色「花」字，免去资源文件。</summary>
+    /// <summary>托盘图标：取 exe 自身的多尺寸图标（csproj ApplicationIcon 嵌入的 app.ico），取 16px 帧。</summary>
     private static Icon CreateIcon()
     {
-        using var bitmap = new Bitmap(32, 32);
-        using (var g = Graphics.FromImage(bitmap))
-        {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            using var background = new SolidBrush(Color.FromArgb(0x63, 0x52, 0xDC));
-            g.FillRectangle(background, 2, 2, 28, 28);
-
-            using var font = new Font("Microsoft YaHei UI", 15f, FontStyle.Bold, GraphicsUnit.Pixel);
-            var size = g.MeasureString("花", font);
-            using var foreground = new SolidBrush(Color.White);
-            g.DrawString("花", font, foreground, (32 - size.Width) / 2f, (32 - size.Height) / 2f);
-        }
-
-        return Icon.FromHandle(bitmap.GetHicon());
+        using var extracted = Icon.ExtractAssociatedIcon(Environment.ProcessPath!);
+        return new Icon(extracted, 16, 16); // 多尺寸 ico 里挑 16px 帧；Icon 自持句柄，Dispose 即回收
     }
 
     public void Dispose()
@@ -90,10 +74,6 @@ internal sealed class TrayIconController : IDisposable
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
         _menu.Dispose();
-        if (_iconHandle != IntPtr.Zero)
-        {
-            NativeMethods.DestroyIcon(_iconHandle);
-            _iconHandle = IntPtr.Zero;
-        }
+        _icon.Dispose(); // ExtractAssociatedIcon 得来的 Icon 自持句柄
     }
 }

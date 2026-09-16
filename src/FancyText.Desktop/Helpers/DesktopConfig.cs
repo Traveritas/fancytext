@@ -29,6 +29,8 @@ internal sealed record DesktopSettings
     public bool PrefillSelection { get; init; } = true; // 唤出时优先预填其它应用中选中的文字（UIA 只读，失败回退剪贴板）
     public bool HideAfterCopy { get; init; } = true;    // 复制后收起弹窗（关=留在原地，状态栏提示已复制）
     public string PopupPosition { get; init; } = "cursor"; // cursor | primary
+    public bool ReduceMotion { get; init; }               // 减少动效：关闭全部界面动画（即时生效）
+    public string Backdrop { get; init; } = "mica"; // mica（Win11 系统材质，不支持时自动回退）| solid（纯色）
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -80,10 +82,12 @@ internal sealed record DesktopSettings
                 s = ReadString(root, s, "theme", v => v is "light" or "dark" or "system");
                 s = ReadString(root, s, "previewSize", v => v is "small" or "medium" or "large");
                 s = ReadString(root, s, "popupPosition", v => v is "cursor" or "primary");
+                s = ReadString(root, s, "backdrop", v => v is "mica" or "solid");
                 s = ReadBool(root, s, "launchAtLogin");
                 s = ReadBool(root, s, "prefillClipboard");
                 s = ReadBool(root, s, "prefillSelection");
                 s = ReadBool(root, s, "hideAfterCopy");
+                s = ReadBool(root, s, "reduceMotion");
                 return s;
             }
         }
@@ -183,6 +187,7 @@ internal sealed record DesktopSettings
                     "theme" => s with { Theme = text },
                     "previewSize" => s with { PreviewSize = text },
                     "popupPosition" => s with { PopupPosition = text },
+                    "backdrop" => s with { Backdrop = text },
                     _ => s,
                 };
             }
@@ -201,6 +206,7 @@ internal sealed record DesktopSettings
                 "prefillClipboard" => s with { PrefillClipboard = value },
                 "prefillSelection" => s with { PrefillSelection = value },
                 "hideAfterCopy" => s with { HideAfterCopy = value },
+                "reduceMotion" => s with { ReduceMotion = value },
                 _ => s,
             };
         }

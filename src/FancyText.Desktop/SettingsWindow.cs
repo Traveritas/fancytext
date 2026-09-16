@@ -75,8 +75,11 @@ internal sealed class SettingsWindow : Window
         root.Children.Add(MakeGroupHeader(Loc.S(lang, "个性化", "Personalization")));
         root.Children.Add(MakeRow(Loc.S(lang, "语言", "Language"), MakeLanguageCombo()));
         root.Children.Add(MakeRow(Loc.S(lang, "主题", "Theme"), MakeThemeCombo()));
+        root.Children.Add(MakeRow(Loc.S(lang, "背景材质", "Backdrop"), MakeBackdropCombo()));
         root.Children.Add(MakeRow(Loc.S(lang, "强调色", "Accent color"), MakeAccentPanel()));
         root.Children.Add(MakeRow(Loc.S(lang, "预览字号", "Preview size"), MakePreviewSizeCombo()));
+        root.Children.Add(MakeRow(Loc.S(lang, "减少动效", "Reduce motion"),
+            MakeToggle(nameof(_settings.ReduceMotion), _settings.ReduceMotion, v => Save(_settings with { ReduceMotion = v }))));
 
         root.Children.Add(MakeSeparator());
 
@@ -209,6 +212,20 @@ internal sealed class SettingsWindow : Window
             var theme = combo.SelectedIndex == 1 ? "dark" : combo.SelectedIndex == 2 ? "system" : "light";
             Save(_settings with { Theme = theme }, retheme: true);
         };
+        return combo;
+    }
+
+    /// <summary>背景材质：Mica 仅深色主题生效（实测 Win11 26100 本窗口形态 Mica 色调恒深，浅色配上会破坏对比度；
+    /// 浅色 Mica 与纯色观感本就几乎一致）。纯色退回纯主题色背景，作为观感逃生门。</summary>
+    private ComboBox MakeBackdropCombo()
+    {
+        var combo = new ComboBox { Width = 150, FontSize = 12.5, HorizontalAlignment = HorizontalAlignment.Right };
+        combo.Items.Add(Loc.S(_lang, "Mica（深色主题）", "Mica (dark theme)"));
+        combo.Items.Add(Loc.S(_lang, "纯色", "Solid"));
+        combo.SelectedIndex = _settings.Backdrop == "solid" ? 1 : 0;
+        StyleCombo(combo);
+        combo.SelectionChanged += (_, _) =>
+            Save(_settings with { Backdrop = combo.SelectedIndex == 1 ? "solid" : "mica" });
         return combo;
     }
 

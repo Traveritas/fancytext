@@ -35,6 +35,7 @@ internal sealed class Theme
             KeycapText = FreezeRgb(0xC7, 0xC5, 0xD8);
             InputIdleBackground = Tint(h, s, 0.215, 0.220);
             InputFocusBackground = Tint(h, s, 0.245, 0.280);
+            FlyoutBackground = Tint(h, s, 0.245, 0.280);    // 浮层（筛选下拉）底：与输入框聚焦同档
             ChipBackground = Tint(h, s, 0.235, 0.180);
             HoverChip = Tint(h, s, 0.300, 0.450);
             HoverItem = Tint(h, s, 0.280, 0.350);
@@ -53,6 +54,7 @@ internal sealed class Theme
             KeycapText = FreezeRgb(0x50, 0x4E, 0x68);
             InputIdleBackground = FreezeRgb(0xF1, 0xF0, 0xF8);
             InputFocusBackground = FreezeRgb(0xFF, 0xFF, 0xFF);
+            FlyoutBackground = FreezeRgb(0xFF, 0xFF, 0xFF);  // 浮层（筛选下拉）底：白
             ChipBackground = Tint(h, s, 0.930, 0.060);   // 分类胶囊底：几乎中性
             HoverChip = Tint(h, s, 0.900, 0.450);        // 胶囊悬停
             HoverItem = Tint(h, s, 0.953, 0.350);        // 列表项悬停
@@ -73,6 +75,7 @@ internal sealed class Theme
     public Brush Meta { get; }
     public Brush InputIdleBackground { get; }
     public Brush InputFocusBackground { get; }
+    public Brush FlyoutBackground { get; }
     public Brush ChipBackground { get; }
     public Brush HoverChip { get; }
     public Brush HoverItem { get; }
