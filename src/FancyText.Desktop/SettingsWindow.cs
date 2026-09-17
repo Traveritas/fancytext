@@ -130,13 +130,21 @@ internal sealed class SettingsWindow : Window
         root.Children.Add(MakeGroupHeader(Loc.S(lang, "行为", "Behavior")));
         root.Children.Add(MakeRow(Loc.S(lang, "开机自启动", "Launch at login"),
             MakeToggle(nameof(_settings.LaunchAtLogin), _settings.LaunchAtLogin, ApplyLaunchAtLogin)));
-        root.Children.Add(MakeRow(Loc.S(lang, "唤出时预填选中文字", "Prefill selected text"),
-            MakeToggle(nameof(_settings.PrefillSelection), _settings.PrefillSelection, v => Save(_settings with { PrefillSelection = v }))));
-        var plusRow = MakeRow(Loc.S(lang, "预填加强模式", "Enhanced prefill"),
-            MakeToggle(nameof(_settings.PrefillSelectionPlus), _settings.PrefillSelectionPlus, v => Save(_settings with { PrefillSelectionPlus = v })));
+        // 子选项联动：兼容模式仅主开关开启时可用（且逻辑上也不生效，见 ShowPopup）
+        var prefillPlusToggle = MakeToggle(nameof(_settings.PrefillSelectionPlus), _settings.PrefillSelectionPlus,
+            v => Save(_settings with { PrefillSelectionPlus = v }));
+        var prefillToggle = MakeToggle(nameof(_settings.PrefillSelection), _settings.PrefillSelection,
+            v =>
+            {
+                Save(_settings with { PrefillSelection = v });
+                prefillPlusToggle.IsEnabled = v;
+            });
+        root.Children.Add(MakeRow(Loc.S(lang, "唤出时预填选中文字", "Prefill selected text"), prefillToggle));
+        prefillPlusToggle.IsEnabled = _settings.PrefillSelection;
+        var plusRow = MakeRow(Loc.S(lang, "预填兼容模式（模拟复制）", "Compatibility prefill (simulated copy)"), prefillPlusToggle);
         plusRow.ToolTip = Loc.S(lang,
-            "选中文字 UIA 读取失败时，向目标应用发送 Ctrl+Insert 复制并立即还原剪贴板（个别应用不支持该快捷键）",
-            "When UIA read fails, sends Ctrl+Insert to the target app to copy the selection, then restores the clipboard immediately");
+            "部分应用（如某些终端）不支持直接读取选中文字；开启后，预填失败时自动改用 Ctrl+Insert 模拟复制来读取，并立即还原剪贴板（会短暂改动剪贴板）。仅在「唤出时预填选中文字」开启时生效",
+            "Some apps (e.g. certain terminals) don't support direct selection reading. When enabled, failed reads fall back to simulating Ctrl+Insert to copy, restoring the clipboard right after (briefly modifies the clipboard). Only effective when 'Prefill selected text' is on");
         root.Children.Add(plusRow);
         root.Children.Add(MakeRow(Loc.S(lang, "唤出时预填剪贴板文字", "Prefill from clipboard"),
             MakeToggle(nameof(_settings.PrefillClipboard), _settings.PrefillClipboard, v => Save(_settings with { PrefillClipboard = v }))));
@@ -478,6 +486,11 @@ internal sealed class SettingsWindow : Window
         var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
         hover.Setters.Add(new Setter(Border.BorderBrushProperty, _theme.Text, "Track"));
         template.Triggers.Add(hover);
+
+        // 禁用态：整键降透明度（自绘模板没有系统灰化，子选项联动禁用时必须有视觉反馈）
+        var disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+        disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.4));
+        template.Triggers.Add(disabled);
 
         style.Setters.Add(new Setter(Control.TemplateProperty, template));
         return style;

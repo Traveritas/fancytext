@@ -1007,7 +1007,7 @@ internal sealed class MainWindow : Window
             }
         }
 
-        if (prefill is not { Length: > 0 } && _settings.PrefillSelectionPlus)
+        if (prefill is not { Length: > 0 } && _settings.PrefillSelection && _settings.PrefillSelectionPlus)
         {
             // 「加强」兜底：模拟 Ctrl+Insert 复制（UIA 不支持的应用的普适路径），读出即还原剪贴板
             prefill = Helpers.ClipboardCopyReader.TryRead(out var copyReason);
