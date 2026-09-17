@@ -1003,8 +1003,17 @@ internal sealed class MainWindow : Window
             prefill = Helpers.SelectedTextReader.TryRead(out var prefillReason);
             if (prefill is not { Length: > 0 } && prefillReason is not null)
             {
-                LogDiag($"prefill: 未取到选中文字（{prefillReason}）"); // 预填失败必须留痕，不能静默
+                LogDiag($"prefill: UIA 未取到（{prefillReason}）");
             }
+        }
+
+        if (prefill is not { Length: > 0 } && _settings.PrefillSelectionPlus)
+        {
+            // 「加强」兜底：模拟 Ctrl+Insert 复制（UIA 不支持的应用的普适路径），读出即还原剪贴板
+            prefill = Helpers.ClipboardCopyReader.TryRead(out var copyReason);
+            LogDiag(prefill is { Length: > 0 }
+                ? "prefill: 经模拟复制（Ctrl+Insert）取得选中文字"
+                : $"prefill: 模拟复制也未取到（{copyReason}）");
         }
 
         if (prefill is { Length: > 0 })

@@ -132,6 +132,12 @@ internal sealed class SettingsWindow : Window
             MakeToggle(nameof(_settings.LaunchAtLogin), _settings.LaunchAtLogin, ApplyLaunchAtLogin)));
         root.Children.Add(MakeRow(Loc.S(lang, "唤出时预填选中文字", "Prefill selected text"),
             MakeToggle(nameof(_settings.PrefillSelection), _settings.PrefillSelection, v => Save(_settings with { PrefillSelection = v }))));
+        var plusRow = MakeRow(Loc.S(lang, "预填加强模式", "Enhanced prefill"),
+            MakeToggle(nameof(_settings.PrefillSelectionPlus), _settings.PrefillSelectionPlus, v => Save(_settings with { PrefillSelectionPlus = v })));
+        plusRow.ToolTip = Loc.S(lang,
+            "选中文字 UIA 读取失败时，向目标应用发送 Ctrl+Insert 复制并立即还原剪贴板（个别应用不支持该快捷键）",
+            "When UIA read fails, sends Ctrl+Insert to the target app to copy the selection, then restores the clipboard immediately");
+        root.Children.Add(plusRow);
         root.Children.Add(MakeRow(Loc.S(lang, "唤出时预填剪贴板文字", "Prefill from clipboard"),
             MakeToggle(nameof(_settings.PrefillClipboard), _settings.PrefillClipboard, v => Save(_settings with { PrefillClipboard = v }))));
         root.Children.Add(MakeRow(Loc.S(lang, "复制后收起窗口", "Hide after copying"),
