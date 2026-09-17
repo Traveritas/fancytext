@@ -65,6 +65,18 @@ internal static class NativeMethods
     [DllImport("dwmapi.dll")]
     public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
+    /// <summary>DWM 边框矩形（DwmExtendFrameIntoClientArea 用）。</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MARGINS
+    {
+        public int Left, Right, Top, Bottom;
+    }
+
+    /// <summary>把窗口框架（玻璃/材质区）扩展进客户区：全 -1 = 整个客户区。无边框窗口（NCCALCSIZE 0）
+    /// 上 SYSTEMBACKDROP_TYPE 能返回成功但什么都不画，必须先有"框架"区域材质才有地方落笔。</summary>
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref MARGINS margins);
+
     // ---------- 工作集修剪（轻量化：隐藏后把常驻内存观感从 ~117MB 压到 10-25MB） ----------
 
     [DllImport("kernel32.dll")]

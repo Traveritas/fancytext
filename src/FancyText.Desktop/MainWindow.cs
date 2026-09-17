@@ -201,11 +201,11 @@ internal sealed class MainWindow : Window
     }
 
     /// <summary>
-    /// 背景材质：Mica 或纯色。Mica 只在**深色应用主题**下启用——实测 Win11 26100 上本窗口形态
-    /// （WindowStyle.None + NCCALCSIZE 0）的 Mica 色调恒定偏深，不跟随沉浸明暗属性；浅色主题
-    /// 配深色 Mica 会破坏对比度，而浅色 Mica 与纯色观感本就几乎一致，故浅色直接走纯色。
-    /// 其余门槛：Win11 22H2+（Build 22621）且设置 Backdrop=mica。HRESULT==0 才切透明底；
-    /// 失败/老系统/纯色/浅色主题：保持主题窗口底色，无感知回退。
+    /// 背景材质：Mica（Win11 22H2+，Build 22621，且设置 Backdrop=mica）或纯色。
+    /// 先设沉浸深色模式（随主题明暗，控制 Mica 深浅着色）；本窗口无边框（NCCALCSIZE 0），
+    /// SYSTEMBACKDROP_TYPE 单独设置会"返回成功但什么都不画"——必须先 DwmExtendFrameIntoClientArea(-1)
+    /// 把框架区扩展进客户区，材质才有落笔处（失败则还原）。HRESULT==0 才切透明底；
+    /// 失败/老系统/纯色：保持主题窗口底色，无感知回退。
     /// Mica 下文字抗锯齿从 ClearType 退化为灰阶（WPF 透明表面已知行为）——设置页留「纯色」逃生门。
     /// </summary>
     private void ApplyBackdrop(IntPtr handle)
@@ -216,13 +216,21 @@ internal sealed class MainWindow : Window
 
         _micaActive = false;
         if (Environment.OSVersion.Version.Build >= 22621 &&
-            _theme.Dark && // 见方法头注释：本窗口形态 Mica 色调恒深，只在深色主题启用
             string.Equals(_settings.Backdrop, "mica", StringComparison.OrdinalIgnoreCase))
         {
+            // 无边框（NCCALCSIZE 0）窗口的 SYSTEMBACKDROP 会"返回成功但什么都不画"——
+            // 先把框架区扩展进客户区，材质才有落笔处；失败则还原防玻璃伪影
+            var margins = new NativeMethods.MARGINS { Left = -1, Right = -1, Top = -1, Bottom = -1 };
+            _ = NativeMethods.DwmExtendFrameIntoClientArea(handle, ref margins);
             const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
             var mica = 2; // DWMSBT_MAINWINDOW
             _micaActive = NativeMethods.DwmSetWindowAttribute(
                 handle, DWMWA_SYSTEMBACKDROP_TYPE, ref mica, sizeof(int)) == 0;
+            if (!_micaActive)
+            {
+                var zero = new NativeMethods.MARGINS();
+                _ = NativeMethods.DwmExtendFrameIntoClientArea(handle, ref zero);
+            }
         }
 
         Background = _micaActive ? Brushes.Transparent : _theme.WindowBackground;
