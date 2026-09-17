@@ -72,7 +72,8 @@ internal sealed class MainWindow : Window
     private ToggleButton _recentButton = new();
     private Popup _filterPopup = new();
     private DateTime _popupClosedAt = DateTime.MinValue; // 下拉刚关闭的时间点（250ms 内对 chip 的按下视为"再点收起"，见 BuildUi）
-    private List<(FilterOption Option, TextBlock Label, TextBlock Check)> _menuItems = [];
+    private List<(FilterOption Option, TextBlock Label, TextBlock Check, ToggleButton Item)> _menuItems = [];
+    private int _menuKbIndex = -1; // 菜单键盘高亮索引（-1=菜单关闭）；焦点永留输入框，菜单导航走窗口级路由
     private List<StyleListItem> _currentItems = [];
     private FilterOption _filter = FilterOption.All;
 
@@ -325,7 +326,8 @@ internal sealed class MainWindow : Window
             Style = ghostStyle, // 幽灵风：透明底（前景色/悬停覆盖层由样式驱动），不再有胶囊块
             Padding = new Thickness(9, 5, 9, 5),
             Background = Brushes.Transparent,
-            ToolTip = Loc.S(lang, "筛选分类（Ctrl+Tab 循环切换）", "Filter category (Ctrl+Tab to cycle)"),
+            Focusable = false, // 纯键盘模型：不进 Tab 链（筛选走 Alt+↓ 菜单导航 / Ctrl+Tab 循环），焦点永留输入框
+            ToolTip = Loc.S(lang, "筛选分类（Alt+↓ 展开 · Ctrl+Tab 循环）", "Filter (Alt+↓ open · Ctrl+Tab cycle)"),
             Cursor = Cursors.Hand,
             Margin = new Thickness(6, 0, 2, 0),
         };
@@ -362,19 +364,13 @@ internal sealed class MainWindow : Window
                 Style = ghostStyle,
                 Tag = option,
                 Padding = new Thickness(10, 6, 10, 6),
-                Background = Brushes.Transparent,
+                Background = Brushes.Transparent, // 键盘高亮经 Background 呈现（模板 Grid TemplateBinding 透传）
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
                 Cursor = Cursors.Hand,
             };
-            item.Click += (_, _) =>
-            {
-                _filter = option;
-                item.IsChecked = false; // 选中态不走 Toggle，统一由 SyncFilterVisuals 画 ✓
-                _filterPopup.IsOpen = false;
-                ApplyFilterChange();
-            };
+            item.Click += (_, _) => ApplyMenuOption(option, item);
             menuPanel.Children.Add(item);
-            _menuItems.Add((option, label, check));
+            _menuItems.Add((option, label, check, item));
         }
 
         _filterPopup.Child = new Border
@@ -390,9 +386,21 @@ internal sealed class MainWindow : Window
 
         _filterChip.Checked += (_, _) => _filterPopup.IsOpen = true;
         _filterChip.Unchecked += (_, _) => _filterPopup.IsOpen = false;
+        // 打开时初始化键盘高亮到当前筛选项；关闭时复位（含点窗外自关闭）
+        _filterPopup.Opened += (_, _) =>
+        {
+            _menuKbIndex = Math.Max(0, _menuItems.FindIndex(m => m.Option.Equals(_filter)));
+            ApplyMenuKbHighlight();
+        };
         _filterPopup.Closed += (_, _) =>
         {
             _popupClosedAt = DateTime.UtcNow;
+            if (_menuKbIndex >= 0)
+            {
+                _menuItems[_menuKbIndex].Item.ClearValue(Control.BackgroundProperty); // 回到模板默认（透明）
+                _menuKbIndex = -1;
+            }
+
             if (_filterChip.IsChecked == true)
             {
                 _filterChip.IsChecked = false;
@@ -416,6 +424,7 @@ internal sealed class MainWindow : Window
             Width = 28,
             Height = 28,
             Background = Brushes.Transparent,
+            Focusable = false, // 不进 Tab 链（键盘通道 = Ctrl+Tab 循环里的「收藏」档）
             ToolTip = Loc.S(lang, "收藏筛选", "Pinned filter"),
             Cursor = Cursors.Hand,
             Margin = new Thickness(2, 0, 2, 0),
@@ -427,6 +436,7 @@ internal sealed class MainWindow : Window
             Width = 28,
             Height = 28,
             Background = Brushes.Transparent,
+            Focusable = false, // 不进 Tab 链（键盘通道 = Ctrl+Tab 循环里的「最近」档）
             ToolTip = Loc.S(lang, "最近筛选", "Recent filter"),
             Cursor = Cursors.Hand,
             Margin = new Thickness(2, 0, 0, 0),
@@ -699,7 +709,7 @@ internal sealed class MainWindow : Window
         _filterChipLabel.Text = $"{_filter.Label} ▾";
         _favButton.IsChecked = _filter.Pinned;
         _recentButton.IsChecked = _filter.Recent;
-        foreach (var (option, label, check) in _menuItems)
+        foreach (var (option, label, check, _) in _menuItems)
         {
             var active = option.Equals(_filter);
             check.Opacity = active ? 1 : 0;
@@ -724,6 +734,87 @@ internal sealed class MainWindow : Window
         var index = Array.FindIndex(catalog, o => o.Equals(_filter));
         index = (index + delta + catalog.Length) % catalog.Length;
         _filter = catalog[index];
+        ApplyFilterChange();
+    }
+
+    // ---------- 筛选菜单的键盘模型（焦点永留输入框；Popup 是独立 HWND 不收键，由窗口级路由驱动） ----------
+
+    /// <summary>菜单打开期间的按键路由：↑↓ 移高亮、Enter 应用、Esc/Alt+↓ 收起；返回 true=已消费。
+    /// 字符等其它键不拦——继续落输入框（菜单保持开着，所见即所得）。</summary>
+    private bool HandleMenuKey(Key key, KeyEventArgs e)
+    {
+        switch (key)
+        {
+            case Key.Down when Keyboard.Modifiers == ModifierKeys.Alt:
+            case Key.Escape:
+                _filterPopup.IsOpen = false; // Closed 里复位高亮状态
+                e.Handled = true;
+                return true;
+            case Key.Down when Keyboard.Modifiers == ModifierKeys.None:
+                MoveMenuHighlight(1);
+                e.Handled = true;
+                return true;
+            case Key.Up when Keyboard.Modifiers == ModifierKeys.None:
+                MoveMenuHighlight(-1);
+                e.Handled = true;
+                return true;
+            case Key.Enter:
+                if (_menuKbIndex >= 0)
+                {
+                    ApplyMenuOption(_menuItems[_menuKbIndex].Option, _menuItems[_menuKbIndex].Item);
+                }
+
+                e.Handled = true;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>菜单键盘高亮（环绕移动）：Background 呈现（ghost 模板 Grid TemplateBinding 透传，关闭时统一清）。</summary>
+    private void MoveMenuHighlight(int delta)
+    {
+        if (_menuItems.Count == 0)
+        {
+            return;
+        }
+
+        if (_menuKbIndex >= 0)
+        {
+            _menuItems[_menuKbIndex].Item.ClearValue(Control.BackgroundProperty);
+        }
+
+        _menuKbIndex = ((_menuKbIndex + delta) % _menuItems.Count + _menuItems.Count) % _menuItems.Count;
+        ApplyMenuKbHighlight();
+    }
+
+    private void ApplyMenuKbHighlight()
+    {
+        if (_menuKbIndex >= 0)
+        {
+            _menuItems[_menuKbIndex].Item.Background = _theme.HoverItem;
+        }
+    }
+
+    /// <summary>Alt+↓：展开/收起筛选菜单（ComboBox 惯例）；展开时 Opened 事件把高亮初始化到当前筛选项。</summary>
+    private void ToggleFilterMenu()
+    {
+        if (_filterPopup.IsOpen)
+        {
+            _filterPopup.IsOpen = false;
+        }
+        else
+        {
+            _filterChip.IsChecked = true; // Checked 事件打开菜单
+        }
+    }
+
+    /// <summary>菜单选定（鼠标点击 / 键盘 Enter 共用）：应用筛选并收起菜单，焦点经收口回输入框。</summary>
+    private void ApplyMenuOption(FilterOption option, ToggleButton item)
+    {
+        _filter = option;
+        item.IsChecked = false; // 选中态不走 Toggle，统一由 SyncFilterVisuals 画 ✓
+        _filterPopup.IsOpen = false;
         ApplyFilterChange();
     }
 
@@ -1456,6 +1547,12 @@ internal sealed class MainWindow : Window
         // Alt 组合键经 Key.System 传递，统一换算后再判断
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
 
+        // 筛选菜单开着：↑↓/Enter/Esc/Alt+↓ 先走菜单导航（焦点永留输入框，见 HandleMenuKey）
+        if (_filterPopup.IsOpen && HandleMenuKey(key, e))
+        {
+            return;
+        }
+
         switch (key)
         {
             case Key.Enter:
@@ -1487,6 +1584,10 @@ internal sealed class MainWindow : Window
                 break;
             case Key.R when Keyboard.Modifiers == ModifierKeys.Control:
                 SelectRandom();
+                e.Handled = true;
+                break;
+            case Key.Down when Keyboard.Modifiers == ModifierKeys.Alt:
+                ToggleFilterMenu(); // Alt+↓ 展开/收起筛选菜单（ComboBox 惯例）
                 e.Handled = true;
                 break;
             case Key.Down when Keyboard.Modifiers == ModifierKeys.None:
