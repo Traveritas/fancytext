@@ -1,5 +1,6 @@
 using System.Drawing;
 using FancyText.Core;
+using FancyText.Desktop.Helpers;
 
 using WinForms = System.Windows.Forms;
 
@@ -35,6 +36,9 @@ internal sealed class TrayIconController : IDisposable
         _menu.Items.Add(settingsItem);
         _menu.Items.Add(new WinForms.ToolStripSeparator());
         _menu.Items.Add(exitItem);
+        // 主题化渲染：Win11 已为这类菜单画好圆角，这里只把配色接到主窗主题（深浅色即时跟随）
+        _menu.Renderer = new WinForms.ToolStripProfessionalRenderer(new ThemedColorTable(_window));
+        _menu.Font = new Font("Microsoft YaHei UI", 9.5f);
         // 打开菜单时按当前语言刷新全部文案（热键换绑/语言切换后随下次打开生效，零重建链路）
         _menu.Opening += (_, _) => RefreshTexts();
 
@@ -55,7 +59,49 @@ internal sealed class TrayIconController : IDisposable
         _menu.Items[0].Text = Loc.S(lang, "打开(&O)", "&Open");
         _menu.Items[1].Text = Loc.S(lang, "设置(&S)…", "&Settings…");
         _menu.Items[3].Text = Loc.S(lang, "退出(&X)", "E&xit");
+        // 文字色跟随主题（配色表只管背景/高亮/边框，项文字色走 ForeColor）
+        var fg = ((System.Windows.Media.SolidColorBrush)_window.CurrentTheme.Text).Color;
+        var textColor = Color.FromArgb(fg.A, fg.R, fg.G, fg.B);
+        foreach (WinForms.ToolStripItem item in _menu.Items)
+        {
+            item.ForeColor = textColor;
+        }
+
         UpdateTooltip();
+    }
+
+    /// <summary>托盘菜单配色表：每次绘制时从主窗当前主题取色（主题切换即时生效，无需重建菜单）。
+    /// 只管配色——圆角/阴影由 Win11 系统菜单窗口自带，行为保持 WinForms 原生。</summary>
+    private sealed class ThemedColorTable : WinForms.ProfessionalColorTable
+    {
+        private readonly MainWindow _main;
+
+        public ThemedColorTable(MainWindow main) => _main = main;
+
+        private Theme T => _main.CurrentTheme;
+
+        private static Color C(System.Windows.Media.Brush brush) =>
+            brush is System.Windows.Media.SolidColorBrush solid
+                ? Color.FromArgb(solid.Color.A, solid.Color.R, solid.Color.G, solid.Color.B)
+                : Color.Magenta;
+
+        public override Color ToolStripDropDownBackground => C(T.FlyoutBackground);
+        public override Color MenuBorder => C(T.WindowBorder);
+        public override Color ImageMarginGradientBegin => C(T.FlyoutBackground);
+        public override Color ImageMarginGradientMiddle => C(T.FlyoutBackground);
+        public override Color ImageMarginGradientEnd => C(T.FlyoutBackground);
+        public override Color MenuItemSelected => C(T.HoverItem);
+        public override Color MenuItemSelectedGradientBegin => C(T.HoverItem);
+        public override Color MenuItemSelectedGradientEnd => C(T.HoverItem);
+        public override Color MenuItemPressedGradientBegin => C(T.SelectedItem);
+        public override Color MenuItemPressedGradientMiddle => C(T.SelectedItem);
+        public override Color MenuItemPressedGradientEnd => C(T.SelectedItem);
+        public override Color SeparatorDark => C(T.Separator);
+        public override Color SeparatorLight => C(T.Separator);
+        public override Color MenuItemBorder => C(T.Primary);
+        public override Color CheckBackground => C(T.HoverItem);
+        public override Color CheckSelectedBackground => C(T.HoverItem);
+        public override Color CheckPressedBackground => C(T.SelectedItem);
     }
 
     private void UpdateTooltip() => _notifyIcon.Text =
