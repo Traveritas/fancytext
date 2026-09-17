@@ -14,4 +14,11 @@
     <ProjectReference Include="..\..\src\FancyText.Core\FancyText.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 合成内嵌官方包：LogicalName 与 Core 的 Resources/bundled 约定前缀一致，供 LoadBundledFrom 测试 -->
+    <EmbeddedResource Include="bundled-sample.json">
+      <LogicalName>FancyText.Core.Resources.bundled.bundled-sample.json</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

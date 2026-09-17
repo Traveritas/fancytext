@@ -43,6 +43,7 @@ internal sealed class SettingsWindow : Window
     private Button _hotkeyPill = new();
     private TextBlock _packStatus = new();
     private StackPanel _packsList = new();
+    private readonly HashSet<string> _expandedPacks = new(StringComparer.OrdinalIgnoreCase); // 面板重填后保留行展开态（按包名）
 
     public SettingsWindow(MainWindow main)
     {
@@ -757,8 +758,10 @@ internal sealed class SettingsWindow : Window
     }
 
     /// <summary>
-    /// 样式包区块：导入（.json 包文件 → %LOCALAPPDATA%\FancyText\styles）、导出收藏为包、
-    /// 已安装包列表（含卸载）。导入/卸载后即时刷新主窗口列表；命令面板插件需重启其进程后生效。
+    /// 样式包管理面板：顶部导入（.json 包文件 → %LOCALAPPDATA%\FancyText\styles）/导出收藏按钮 + 状态行，
+    /// 下方两组——「官方样式包」（exe 内嵌，一键安装/启停/卸载）与「已安装样式包」（用户导入，启停/卸载，
+    /// 损坏标红只能卸载）。每行可展开，用主窗当前输入逐样式做单行转换预览。
+    /// 任何动作后即时刷新主窗口列表；命令面板插件需重启其进程后生效。
     /// </summary>
     private StackPanel MakeStylePacksPanel()
     {
@@ -796,7 +799,7 @@ internal sealed class SettingsWindow : Window
         };
 
         _packsList = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
-        FillInstalledPacks();
+        FillPacksPanel();
 
         var panel = new StackPanel();
         buttons.Children.Add(importBtn);
@@ -807,26 +810,51 @@ internal sealed class SettingsWindow : Window
         return panel;
     }
 
-    private void FillInstalledPacks()
+    /// <summary>重填两组包列表：官方包（exe 内嵌）+ 用户导入包。数据依赖的结构全在这里重建，行展开态按包名跨重填保留。</summary>
+    private void FillPacksPanel()
     {
         _packsList.Children.Clear();
-        IReadOnlyList<FancyText.Core.InstalledPack> packs;
+
+        IReadOnlyList<FancyText.Core.InstalledPack> installed;
+        IReadOnlyList<FancyText.Core.BundledPack> bundled;
         try
         {
-            packs = FancyText.Core.StylePacks.LoadInstalled();
+            installed = FancyText.Core.StylePacks.LoadInstalled();
+            bundled = FancyText.Core.StylePacks.LoadBundled();
         }
         catch (Exception)
         {
-            return; // 目录不可读等：列表留空，导入按钮的错误提示兜底
+            return; // 目录/内嵌资源不可读等：列表留空，导入按钮的错误提示兜底
         }
 
-        if (packs.Count == 0)
+        // —— 官方样式包（内嵌资源；无内嵌包时整组隐藏）——
+        if (bundled.Count > 0)
+        {
+            var installedByName = new Dictionary<string, FancyText.Core.InstalledPack>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pack in installed)
+            {
+                installedByName[pack.PackName] = pack;
+            }
+
+            _packsList.Children.Add(MakePackGroupHeader(Loc.S(_lang, "官方样式包", "Official packs")));
+            foreach (var pack in bundled)
+            {
+                _packsList.Children.Add(MakeBundledPackRow(pack, installedByName));
+            }
+        }
+
+        // —— 已安装样式包（用户导入；减去官方同名包，避免两组重复显示）——
+        var officialNames = bundled.Select(p => p.PackName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var userPacks = installed.Where(p => !officialNames.Contains(p.PackName)).ToList();
+
+        _packsList.Children.Add(MakePackGroupHeader(Loc.S(_lang, "已安装样式包", "Installed packs")));
+        if (userPacks.Count == 0)
         {
             _packsList.Children.Add(new TextBlock
             {
                 Text = Loc.S(_lang,
-                    $"尚未安装样式包——把别人分享的 .json 放进 {FancyText.Core.StylePacks.DefaultPacksDirectory} 也行",
-                    $"No style packs installed — dropping a shared .json into {FancyText.Core.StylePacks.DefaultPacksDirectory} also works"),
+                    $"尚无导入的样式包——把别人分享的 .json 放进 {FancyText.Core.StylePacks.DefaultPacksDirectory} 也行",
+                    $"No imported packs yet — dropping a shared .json into {FancyText.Core.StylePacks.DefaultPacksDirectory} also works"),
                 FontSize = 10.5,
                 Foreground = _theme.Meta,
                 Opacity = 0.8,
@@ -835,29 +863,71 @@ internal sealed class SettingsWindow : Window
             return;
         }
 
-        foreach (var pack in packs)
+        foreach (var pack in userPacks)
         {
-            var label = pack.Error is null
-                ? Loc.S(_lang, $"{pack.PackName}（{pack.Styles.Count} 个样式）", $"{pack.PackName} ({pack.Styles.Count} styles)")
-                : Loc.S(_lang, $"{Path.GetFileName(pack.FilePath)}（损坏：{pack.Error}）", $"{Path.GetFileName(pack.FilePath)} (broken: {pack.Error})");
+            _packsList.Children.Add(MakeInstalledPackRow(pack));
+        }
+    }
+
+    /// <summary>面板内的分组小标题（比 MakeGroupHeader 低一档）。</summary>
+    private TextBlock MakePackGroupHeader(string text) => new()
+    {
+        Text = text,
+        FontSize = 11.5,
+        FontWeight = FontWeights.SemiBold,
+        Foreground = _theme.Meta,
+        Margin = new Thickness(0, 8, 0, 6),
+    };
+
+    /// <summary>官方包行：右侧按钮组按状态切换——未安装 [安装]；已安装未停用 [停用][卸载]；已停用 [启用][卸载]。
+    /// 安装状态以包目录里存在同名文件为准（损坏文件按未安装处理，[安装] 覆盖修复）。</summary>
+    private FrameworkElement MakeBundledPackRow(FancyText.Core.BundledPack pack,
+        IReadOnlyDictionary<string, FancyText.Core.InstalledPack> installedByName)
+    {
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        DockPanel.SetDock(buttons, Dock.Right);
+
+        if (installedByName.TryGetValue(pack.PackName, out var installed))
+        {
+            AddPackActionButtons(buttons, pack.PackName, _main.Usage.IsPackDisabled(pack.PackName), installed);
+        }
+        else
+        {
+            var installBtn = MakePackButton(Loc.S(_lang, "安装", "Install"));
+            installBtn.Click += (_, _) =>
+            {
+                var result = FancyText.Core.StylePacks.InstallBundled(pack);
+                if (!result.Success)
+                {
+                    ShowPackError(Loc.S(_lang, $"安装失败：{string.Join("\n", result.Errors)}", $"Install failed: {string.Join("\n", result.Errors)}"));
+                    return;
+                }
+
+                // 安装即启用：清掉同名包可能残留的停用标记，否则"装了却看不到样式"
+                _main.Usage.SetPackDisabled(pack.PackName, false);
+                ApplyPacksChanged(Loc.S(_lang, "已安装 ✓（命令面板插件需重启后生效）", "Installed ✓ (Command Palette extension picks it up after restart)"));
+            };
+            buttons.Children.Add(installBtn);
+        }
+
+        return MakePackRow(pack.PackName, pack.Styles, buttons);
+    }
+
+    /// <summary>用户导入包行：健康包给启停 + 卸载 + 展开预览；损坏包保持标红，不给启停（只能卸载）。</summary>
+    private FrameworkElement MakeInstalledPackRow(FancyText.Core.InstalledPack pack)
+    {
+        if (pack.Error is not null)
+        {
             var text = new TextBlock
             {
-                Text = label,
+                Text = Loc.S(_lang, $"{Path.GetFileName(pack.FilePath)}（损坏：{pack.Error}）", $"{Path.GetFileName(pack.FilePath)} (broken: {pack.Error})"),
                 FontSize = 11.5,
-                Foreground = pack.Error is null ? _theme.Text : Frozen(0xD1, 0x3B, 0x3B),
+                Foreground = Frozen(0xD1, 0x3B, 0x3B),
                 VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
             };
-            DockPanel.SetDock(text, Dock.Left);
 
-            var removeBtn = new Button
-            {
-                Content = Loc.S(_lang, "卸载", "Remove"),
-                FontSize = 11,
-                Padding = new Thickness(8, 2, 8, 2),
-                Cursor = Cursors.Hand,
-            };
-            StyleButton(removeBtn);
+            var removeBtn = MakePackButton(Loc.S(_lang, "卸载", "Remove"));
             removeBtn.Click += (_, _) =>
             {
                 if (FancyText.Core.StylePacks.Remove(pack))
@@ -867,11 +937,175 @@ internal sealed class SettingsWindow : Window
             };
             DockPanel.SetDock(removeBtn, Dock.Right);
 
-            var row = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
-            row.Children.Add(removeBtn);
-            row.Children.Add(text);
-            _packsList.Children.Add(row);
+            var brokenRow = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+            brokenRow.Children.Add(removeBtn);
+            brokenRow.Children.Add(text);
+            return brokenRow;
         }
+
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        DockPanel.SetDock(buttons, Dock.Right);
+        AddPackActionButtons(buttons, pack.PackName, _main.Usage.IsPackDisabled(pack.PackName), pack);
+        return MakePackRow(pack.PackName, pack.Styles, buttons);
+    }
+
+    /// <summary>启停 + 卸载按钮（官方已装包与用户健康包共用）：停用只是从列表隐藏样式、文件保留，卸载才删文件。</summary>
+    private void AddPackActionButtons(StackPanel host, string packName, bool disabled, FancyText.Core.InstalledPack installed)
+    {
+        var toggleBtn = MakePackButton(disabled ? Loc.S(_lang, "启用", "Enable") : Loc.S(_lang, "停用", "Disable"));
+        toggleBtn.Click += (_, _) =>
+        {
+            _main.Usage.SetPackDisabled(packName, !disabled);
+            ApplyPacksChanged(disabled
+                ? Loc.S(_lang, $"已启用 {packName}", $"Enabled {packName}")
+                : Loc.S(_lang, $"已停用 {packName}（文件保留，随时可启用）", $"Disabled {packName} (file kept; re-enable anytime)"));
+        };
+        host.Children.Add(toggleBtn);
+
+        var removeBtn = MakePackButton(Loc.S(_lang, "卸载", "Remove"));
+        removeBtn.Margin = new Thickness(6, 0, 0, 0);
+        removeBtn.Click += (_, _) =>
+        {
+            if (FancyText.Core.StylePacks.Remove(installed))
+            {
+                ApplyPacksChanged(Loc.S(_lang, $"已卸载 {packName}", $"Removed {packName}"));
+            }
+        };
+        host.Children.Add(removeBtn);
+    }
+
+    /// <summary>包行右侧小按钮：统一主题样式（与面板顶部导入/导出同款）。</summary>
+    private Button MakePackButton(string text)
+    {
+        var button = new Button
+        {
+            Content = text,
+            FontSize = 11,
+            Padding = new Thickness(8, 2, 8, 2),
+            Cursor = Cursors.Hand,
+        };
+        StyleButton(button);
+        return button;
+    }
+
+    /// <summary>健康包行骨架（官方/用户共用）：左侧小展开钮（▸/▾）+ 包名（N 个样式），右侧按钮组；
+    /// 展开后在行下逐样式列出「样式名 + 当前输入的转换预览」。高度变化内联完成，不做动画。</summary>
+    private FrameworkElement MakePackRow(string packName, IReadOnlyList<TextStyle> styles, StackPanel buttons)
+    {
+        var expanded = _expandedPacks.Contains(packName);
+
+        var expandBtn = new Button
+        {
+            Content = expanded ? "▾" : "▸",
+            FontSize = 10,
+            Padding = new Thickness(4, 1, 4, 1),
+            Margin = new Thickness(0, 0, 4, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Cursor = Cursors.Hand,
+            ToolTip = Loc.S(_lang, "展开预览包内样式", "Preview styles in this pack"),
+        };
+        StyleButton(expandBtn);
+        DockPanel.SetDock(expandBtn, Dock.Left);
+
+        var text = new TextBlock
+        {
+            Text = Loc.S(_lang, $"{packName}（{styles.Count} 个样式）", $"{packName} ({styles.Count} styles)"),
+            FontSize = 11.5,
+            Foreground = _theme.Text,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+
+        var row = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+        row.Children.Add(buttons);   // 右侧按钮组
+        row.Children.Add(expandBtn); // 左侧展开钮
+        row.Children.Add(text);      // 填充余下空间（TextTrimming 需要受限宽度）
+
+        var host = new StackPanel();
+        host.Children.Add(row);
+        if (expanded)
+        {
+            host.Children.Add(MakePackStylesDetail(styles));
+        }
+
+        expandBtn.Click += (_, _) =>
+        {
+            if (!_expandedPacks.Remove(packName))
+            {
+                _expandedPacks.Add(packName);
+            }
+
+            FillPacksPanel(); // 只重填列表区域，状态行文本保留
+        };
+
+        return host;
+    }
+
+    /// <summary>展开的包内样式列表：样式名 + 用主窗当前输入（前 64 字素，与主窗预览同一约定）做的单行转换预览。
+    /// 预览用普通 TextBlock + 主窗同款字体回退链（PreviewTextBlock 是主窗私有类，这里不复用）；
+    /// 转换异常/空结果显示灰色「（不适用）」。</summary>
+    private StackPanel MakePackStylesDetail(IReadOnlyList<TextStyle> styles)
+    {
+        var panel = new StackPanel { Margin = new Thickness(26, 0, 0, 8) };
+
+        var input = _main.CurrentInput;
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            input = FancyText.Core.StyleCatalog.DefaultSample; // 主窗尚无输入时给示例，避免整列「不适用」（同主窗首开行为）
+        }
+
+        var previewInput = TextElementTruncator.Truncate(input, 64);
+
+        foreach (var style in styles)
+        {
+            var name = new TextBlock
+            {
+                Text = style.GetName(_lang),
+                FontSize = 11,
+                Foreground = _theme.Text,
+                Opacity = 0.85,
+                MaxWidth = 130,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+            DockPanel.SetDock(name, Dock.Left);
+
+            string? preview = null;
+            try
+            {
+                preview = style.Transform(previewInput);
+            }
+            catch (Exception)
+            {
+                // 单样式失败按「不适用」处理（同主窗列表的容错粒度）
+            }
+
+            var applicable = !string.IsNullOrEmpty(preview);
+            var previewText = new TextBlock
+            {
+                Text = applicable ? OneLine(preview!) : Loc.S(_lang, "（不适用）", "(n/a)"),
+                FontSize = 11.5,
+                FontFamily = new FontFamily(MainWindow.PreviewFontChain),
+                Foreground = _theme.Meta,
+                Margin = new Thickness(10, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+
+            var line = new DockPanel { Margin = new Thickness(0, 0, 0, 3) };
+            line.Children.Add(name);
+            line.Children.Add(previewText); // 填充余下宽度
+            panel.Children.Add(line);
+        }
+
+        return panel;
+    }
+
+    /// <summary>预览单行化并限长（与主窗 OneLine 同款：160 码元截断，防 Zalgo 之类撑爆测量）。</summary>
+    private static string OneLine(string text)
+    {
+        var single = text.ReplaceLineEndings(" ");
+        return single.Length <= 160 ? single : single[..160] + "…";
     }
 
     private void OnImportPack()
@@ -934,12 +1168,12 @@ internal sealed class SettingsWindow : Window
             $"Exported {pinned.Count} pinned styles ✓ share this file");
     }
 
-    /// <summary>包目录变动后的统一收尾：重载目录 + 刷新主窗口 + 重画已装包列表。</summary>
+    /// <summary>包目录/启停状态变动后的统一收尾：重载目录 + 刷新主窗口 + 重填面板列表。</summary>
     private void ApplyPacksChanged(string message)
     {
         FancyText.Core.StyleCatalog.Reload();
         _main.RefreshStyles();
-        FillInstalledPacks();
+        FillPacksPanel();
         _packStatus.Foreground = _theme.Primary;
         _packStatus.Text = message;
     }

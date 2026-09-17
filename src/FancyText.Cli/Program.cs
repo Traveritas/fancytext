@@ -15,7 +15,7 @@ namespace FancyText.Cli;
 ///   fancy --json [文本]       以 JSON 输出全部转换结果
 ///   fancy --demo              同 <文本>，别名
 ///   fancy --import <包.json>  导入样式包（含内置样式 + 已装包的合并目录）
-///   fancy --packs             列出已安装的样式包
+///   fancy --packs             列出已安装的样式包（含停用标记）
 ///   fancy --export <ID...> [--out <包.json>]  把若干样式（如收藏）导出为可分享的包
 /// </summary>
 public static class Program
@@ -221,13 +221,15 @@ public static class Program
             return 0;
         }
 
+        var state = new UsageState();
         foreach (var pack in packs)
         {
             if (pack.Error is null)
             {
+                var disabled = state.IsPackDisabled(pack.PackName);
                 Console.WriteLine(Loc.S(Lang,
-                    $"  {pack.PackName,-20} {pack.Styles.Count} 个样式  {pack.FilePath}",
-                    $"  {pack.PackName,-20} {pack.Styles.Count} styles  {pack.FilePath}"));
+                    $"  {pack.PackName,-20} {pack.Styles.Count} 个样式{(disabled ? "（已停用）" : "")}  {pack.FilePath}",
+                    $"  {pack.PackName,-20} {pack.Styles.Count} styles{(disabled ? " (disabled)" : "")}  {pack.FilePath}"));
                 foreach (var style in pack.Styles)
                 {
                     Console.WriteLine($"    {style.Id,-22} {style.GetName(Lang)}");

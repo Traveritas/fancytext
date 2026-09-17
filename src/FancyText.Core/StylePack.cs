@@ -34,6 +34,9 @@ public sealed record ImportResult(bool Success, string? InstalledPath, IReadOnly
 /// <summary>已安装（或损坏）的包：Error 非空表示该文件解析/编译失败，Styles 为空。</summary>
 public sealed record InstalledPack(string PackName, string FilePath, IReadOnlyList<TextStyle> Styles, string? Error);
 
+/// <summary>内嵌官方包：随 FancyText.Core 程序集分发（Resources/bundled/*.json 嵌入资源），由 <see cref="StylePacks.InstallBundled"/> 一键安装。Json 为资源原文。</summary>
+public sealed record BundledPack(string PackName, string FileName, IReadOnlyList<TextStyle> Styles, string Json);
+
 /// <summary>
 /// 样式包的导入 / 导出 / 安装扫描 / 卸载。三端（插件 / 桌面 / CLI）共用，
 /// 目录为 <see cref="DefaultPacksDirectory"/>，一文件一包，放文件即生效（进程下次加载）。
@@ -526,14 +529,15 @@ public static class StylePacks
         }
     }
 
-    /// <summary>合并全部可加载包的样式（跳过坏包；与保留 ID（内置/先加载包）冲突的样式跳过）。</summary>
-    internal static IReadOnlyList<TextStyle> LoadInstalledStyles(IReadOnlyCollection<string> reservedIds)
+    /// <summary>合并全部可加载包的样式（跳过坏包与已停用包；与保留 ID（内置/先加载包）冲突的样式跳过）。</summary>
+    internal static IReadOnlyList<TextStyle> LoadInstalledStyles(IReadOnlyCollection<string> reservedIds, IReadOnlyCollection<string>? disabledPacks = null)
     {
         var styles = new List<TextStyle>();
         var seen = new HashSet<string>(reservedIds, StringComparer.Ordinal);
+        var disabled = disabledPacks is { Count: > 0 } ? new HashSet<string>(disabledPacks, StringComparer.Ordinal) : null;
         foreach (var installed in LoadInstalled())
         {
-            if (installed.Error is not null)
+            if (installed.Error is not null || disabled?.Contains(installed.PackName) == true)
             {
                 continue;
             }
@@ -548,6 +552,98 @@ public static class StylePacks
         }
 
         return styles;
+    }
+
+    // ---------- 内嵌官方包 ----------
+
+    /// <summary>内嵌官方包的资源名前缀（csproj 把 Resources/bundled/*.json 嵌为程序集资源，见 FancyText.Core.csproj）。</summary>
+    public const string BundledResourcePrefix = "FancyText.Core.Resources.bundled.";
+
+    /// <summary>枚举随程序集分发的官方包，经与文件导入相同的 JSON 管线解析并编译（坏资源跳过，不拖累其余包）。</summary>
+    public static IReadOnlyList<BundledPack> LoadBundled() => LoadBundledFrom(typeof(StylePacks).Assembly);
+
+    internal static IReadOnlyList<BundledPack> LoadBundledFrom(System.Reflection.Assembly assembly)
+    {
+        var result = new List<BundledPack>();
+        foreach (var resourceName in assembly.GetManifestResourceNames().OrderBy(n => n, StringComparer.Ordinal))
+        {
+            if (!resourceName.StartsWith(BundledResourcePrefix, StringComparison.Ordinal)
+                || !resourceName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string json;
+            using (var stream = assembly.GetManifestResourceStream(resourceName))
+            {
+                if (stream is null)
+                {
+                    continue;
+                }
+
+                using var reader = new StreamReader(stream, System.Text.Encoding.UTF8);
+                json = reader.ReadToEnd();
+            }
+
+            var fileName = resourceName[BundledResourcePrefix.Length..];
+            var parsed = ParseJson(json, fileName);
+            if (parsed.Pack is not { } pack)
+            {
+                continue; // 内嵌包随版本发布，解析失败属打包事故：跳过不拖累其余包
+            }
+
+            var styles = new List<TextStyle>();
+            var broken = false;
+            foreach (var definition in pack.Styles)
+            {
+                try
+                {
+                    styles.Add(StyleFactory.FromDefinition(definition, new StyleSource.Pack(pack.Name)));
+                }
+                catch (Exception)
+                {
+                    broken = true;
+                    break;
+                }
+            }
+
+            if (!broken)
+            {
+                result.Add(new BundledPack(pack.Name, fileName, styles, json));
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>一键安装内嵌官方包：解析校验与冲突检查同 <see cref="Import"/>，资源原文字节落盘到包目录（同包名 = 覆盖升级）。</summary>
+    public static ImportResult InstallBundled(BundledPack bundled)
+    {
+        var parsed = ParseJson(bundled.Json, bundled.FileName);
+        if (parsed.Pack is null)
+        {
+            return new ImportResult(false, null, parsed.Errors);
+        }
+
+        var pack = parsed.Pack;
+        var conflicts = FindConflicts(pack);
+        if (conflicts.Count > 0)
+        {
+            return new ImportResult(false, null,
+                [$"样式 ID 与内置或其他包冲突（请先卸载对方包再安装）：{string.Join("、", conflicts)}"]);
+        }
+
+        try
+        {
+            Directory.CreateDirectory(ActiveDirectory);
+            var target = Path.Combine(ActiveDirectory, ToPackFileName(pack.Name));
+            File.WriteAllText(target, bundled.Json);
+            return new ImportResult(true, target, []);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new ImportResult(false, null, [$"写入失败：{ex.Message}"]);
+        }
     }
 
     // ---------- 导出 ----------

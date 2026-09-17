@@ -13,7 +13,7 @@ public static partial class StyleCatalog
     private static List<TextStyle>? _builtIn;
     private static IReadOnlyList<TextStyle> _all = BuildAll();
 
-    /// <summary>全部样式：内置 + 已安装样式包（%LOCALAPPDATA%\FancyText\styles）。进程内缓存，导入/卸载后调 <see cref="Reload"/>。</summary>
+    /// <summary>全部样式：内置 + 已安装样式包（%LOCALAPPDATA%\FancyText\styles，不含已停用包）。进程内缓存，导入/卸载/停用后调 <see cref="Reload"/>。</summary>
     public static IReadOnlyList<TextStyle> All
     {
         get { lock (Gate) { return _all; } }
@@ -39,7 +39,8 @@ public static partial class StyleCatalog
         var builtIn = BuiltIn;
         var list = new List<TextStyle>(builtIn.Count);
         list.AddRange(builtIn);
-        list.AddRange(StylePacks.LoadInstalledStyles(builtIn.Select(s => s.Id).ToArray()));
+        // 每次重建重读 state.json：停用/启用包在 Reload 后即时生效，三端经此同一合并点自动一致
+        list.AddRange(StylePacks.LoadInstalledStyles(builtIn.Select(s => s.Id).ToArray(), new UsageState().DisabledPacks));
         return list;
     }
 

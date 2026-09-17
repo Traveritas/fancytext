@@ -37,6 +37,8 @@ public static class Program
         TestReviewFixes();
         TestDeclarativeEquivalence();
         TestStylePacks();
+        TestPackDisable();
+        TestBundledPacks();
         TestLocalization();
         TestChineseStyles();
 
@@ -571,6 +573,131 @@ public static class Program
             try
             {
                 Directory.Delete(tempDir2, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
+    }
+
+    /// <summary>包停用：UsageState 存取/宽容读取/Changed；合并目录过滤停用包、启用后恢复；已安装列表保持完整。</summary>
+    private static void TestPackDisable()
+    {
+        Console.WriteLine("包停用：");
+        var tempDir = Path.Combine(Path.GetTempPath(), "fancytext-disable-test-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(tempDir);
+        StylePacks.DirectoryOverrideForTests = tempDir;
+        UsageState.StatePathOverrideForTests = Path.Combine(tempDir, "state", "state.json");
+        try
+        {
+            // 存取 + Changed + 跨实例持久化
+            var state = new UsageState();
+            Check(state.DisabledPacks.Count == 0 && !state.IsPackDisabled("包A"), "初始无停用包");
+            var changedCount = 0;
+            state.Changed += () => changedCount++;
+            state.SetPackDisabled("包A", true);
+            Check(state.IsPackDisabled("包A") && changedCount == 1, "停用触发 Changed");
+            state.SetPackDisabled("包A", true);
+            Check(changedCount == 1, "重复停用不重复广播");
+            Check(new UsageState().IsPackDisabled("包A"), "停用状态跨实例持久化");
+            state.SetPackDisabled("包A", false);
+            Check(!state.IsPackDisabled("包A") && changedCount == 2, "启用触发 Changed");
+            state.SetPackDisabled("包A", false);
+            Check(changedCount == 2, "重复启用不广播");
+
+            // 宽容读取：旧版文件无 disabledPacks 字段 / 字段类型错误 → 空集，其余字段不受影响
+            File.WriteAllText(UsageState.StatePathOverrideForTests, """{"pinned":["bold"],"recent":[],"language":"en"}""");
+            var legacy = new UsageState();
+            Check(legacy.DisabledPacks.Count == 0 && legacy.Language == "en" && legacy.IsPinned("bold"), "旧版状态文件回退空集");
+            File.WriteAllText(UsageState.StatePathOverrideForTests, """{"disabledPacks":"oops"}""");
+            Check(new UsageState().DisabledPacks.Count == 0, "停用字段类型错误按空集处理");
+
+            // 合并过滤：停用包样式不进目录，启用后恢复；已安装列表始终完整
+            File.WriteAllText(Path.Combine(tempDir, "pack-a.json"), """{"schemaVersion":1,"name":"包A","styles":[{"id":"pack-a-1","name":"A1","category":"encoding","steps":[{"op":"reverse"}]}]}""");
+            File.WriteAllText(Path.Combine(tempDir, "pack-b.json"), """{"schemaVersion":1,"name":"包B","styles":[{"id":"pack-b-1","name":"B1","category":"encoding","steps":[{"op":"reverse"}]}]}""");
+            StyleCatalog.Reload();
+            Check(StyleCatalog.All.Any(s => s.Id == "pack-a-1") && StyleCatalog.All.Any(s => s.Id == "pack-b-1"), "两包样式均入目录");
+
+            var state2 = new UsageState();
+            state2.SetPackDisabled("包A", true);
+            StyleCatalog.Reload();
+            Check(StyleCatalog.All.All(s => s.Id != "pack-a-1") && StyleCatalog.All.Any(s => s.Id == "pack-b-1"), "停用包样式退出目录");
+            Check(StylePacks.LoadInstalled().Count == 2, "停用后已安装列表保持完整");
+
+            state2.SetPackDisabled("包A", false);
+            StyleCatalog.Reload();
+            Check(StyleCatalog.All.Any(s => s.Id == "pack-a-1"), "启用后样式恢复");
+            Check(StyleCatalog.All.Count(s => s.Source is null or StyleSource.BuiltIn) == StyleCatalog.BuiltInIds.Count, "停用/启用不影响内置样式");
+        }
+        finally
+        {
+            UsageState.StatePathOverrideForTests = null;
+            StylePacks.DirectoryOverrideForTests = null;
+            StyleCatalog.Reload();
+            try
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
+    }
+
+    /// <summary>内嵌官方包：LoadBundled 资源枚举/解析 + InstallBundled 安装/升级/冲突/卸载全链路（临时目录隔离）。</summary>
+    private static void TestBundledPacks()
+    {
+        Console.WriteLine("内嵌官方包：");
+        // 合成资源嵌在测试程序集（LogicalName 与 Core 约定前缀一致），经 internal LoadBundledFrom 枚举
+        var bundled = StylePacks.LoadBundledFrom(typeof(Program).Assembly);
+        Check(bundled.Count == 1, "合成内嵌包被枚举到", $"实际 {bundled.Count} 个");
+        if (bundled.Count != 1)
+        {
+            return;
+        }
+
+        var sample = bundled[0];
+        Check(sample.PackName == "官方样例包" && sample.FileName == "bundled-sample.json", "内嵌包名与文件名");
+        Check(sample.Styles.Count == 1 && sample.Styles[0].Id == "bundled-sample"
+            && sample.Styles[0].Source is StyleSource.Pack { PackName: "官方样例包" }, "内嵌包样式编译并带来源标记");
+
+        // Core 程序集当前无内嵌包（glob 暂缺不报错）；将来官方包落地后此断言仍成立（解析健康）
+        Check(StylePacks.LoadBundled().All(p => p.Styles.Count > 0 && !string.IsNullOrEmpty(p.PackName)), "Core 程序集 LoadBundled 解析健康");
+
+        var tempDir = Path.Combine(Path.GetTempPath(), "fancytext-bundled-test-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(tempDir);
+        StylePacks.DirectoryOverrideForTests = tempDir;
+        UsageState.StatePathOverrideForTests = Path.Combine(tempDir, "state", "state.json");
+        try
+        {
+            var install = StylePacks.InstallBundled(sample);
+            Check(install.Success && install.InstalledPath == Path.Combine(tempDir, "官方样例包.json"), "一键安装落盘为包名文件", string.Join("; ", install.Errors));
+            Check(File.ReadAllText(install.InstalledPath!) == sample.Json, "落盘为资源原文字节");
+
+            StyleCatalog.Reload();
+            Check(StyleCatalog.All.Any(s => s.Id == "bundled-sample" && s.Source is StyleSource.Pack { PackName: "官方样例包" }), "安装后样式进入目录");
+            Check(Find("bundled-sample").Transform("ab") == "「ab」", "内嵌包样式转换生效");
+
+            var reinstall = StylePacks.InstallBundled(sample);
+            Check(reinstall.Success, "重复安装视为覆盖升级");
+
+            // 与其他包的 ID 冲突仍被拦截：先手动放一个占用同 ID 的异名包
+            File.WriteAllText(Path.Combine(tempDir, "抢占包.json"), """{"schemaVersion":1,"name":"抢占包","styles":[{"id":"bundled-sample","name":"冒充","category":"encoding","steps":[{"op":"reverse"}]}]}""");
+            var blocked = StylePacks.InstallBundled(sample);
+            Check(!blocked.Success && blocked.Errors.Count > 0, "与其他包 ID 冲突被拦截", string.Join("; ", blocked.Errors));
+
+            Check(StylePacks.Remove("官方样例包") && StylePacks.Remove("抢占包"), "清理安装文件");
+            StyleCatalog.Reload();
+            Check(StyleCatalog.All.All(s => s.Id != "bundled-sample"), "卸载后样式退出目录");
+        }
+        finally
+        {
+            UsageState.StatePathOverrideForTests = null;
+            StylePacks.DirectoryOverrideForTests = null;
+            StyleCatalog.Reload();
+            try
+            {
+                Directory.Delete(tempDir, recursive: true);
             }
             catch (IOException)
             {

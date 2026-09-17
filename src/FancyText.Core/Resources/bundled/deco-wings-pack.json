@@ -1,0 +1,385 @@
+{
+  "schemaVersion": 1,
+  "name": "华丽装饰扩充",
+  "author": "FancyText",
+  "description": "官方装饰扩充包：成对括号新变体、星花雪叶角饰、音乐爱心箭头、线框角隅、行间分隔，共 33 个纯数据样式（wrapString / wrapEach / spacing / mapReplace），不引入新算法。全部码点均在 Windows 10/11 自带字体（Segoe UI Symbol、Microsoft YaHei UI 等）覆盖范围内，不出豆腐块。",
+  "styles": [
+    {
+      "id": "deco-bracket-square",
+      "name": "空心方括号 ⟦⟧",
+      "nameEn": "White Square Brackets ⟦⟧",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：⟦ U+27E6 / ⟧ U+27E7，数学空心方括号",
+      "noteEn": "Whole-string wrap (wrapString): ⟦ U+27E6 / ⟧ U+27E7 mathematical white square brackets",
+      "steps": [
+        { "op": "wrapString", "prefix": "⟦", "suffix": "⟧" }
+      ]
+    },
+    {
+      "id": "deco-bracket-double-angle",
+      "name": "双尖括号 ⟪⟫",
+      "nameEn": "Double Angle Brackets ⟪⟫",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：⟪ U+27EA / ⟫ U+27EB，数学双线尖括号",
+      "noteEn": "Whole-string wrap (wrapString): ⟪ U+27EA / ⟫ U+27EB mathematical double angle brackets",
+      "steps": [
+        { "op": "wrapString", "prefix": "⟪", "suffix": "⟫" }
+      ]
+    },
+    {
+      "id": "deco-bracket-angle",
+      "name": "尖括号 ⟨⟩",
+      "nameEn": "Angle Brackets ⟨⟩",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：⟨ U+27E8 / ⟩ U+27E9，数学尖括号（狄拉克括号）",
+      "noteEn": "Whole-string wrap (wrapString): ⟨ U+27E8 / ⟩ U+27E9 mathematical angle brackets (Dirac bra-ket)",
+      "steps": [
+        { "op": "wrapString", "prefix": "⟨", "suffix": "⟩" }
+      ]
+    },
+    {
+      "id": "deco-bracket-cjk",
+      "name": "黑头方括号 【】",
+      "nameEn": "Black Lenticular Brackets 【】",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：【 U+3010 / 】 U+3011，中日韩黑头方括号",
+      "noteEn": "Whole-string wrap (wrapString): 【 U+3010 / 】 U+3011 CJK black lenticular brackets",
+      "steps": [
+        { "op": "wrapString", "prefix": "【", "suffix": "】" }
+      ]
+    },
+    {
+      "id": "deco-bracket-lenticular",
+      "name": "透镜括号 〖〗",
+      "nameEn": "White Lenticular Brackets 〖〗",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：〖 U+3016 / 〗 U+3017，空心透镜（方头）括号",
+      "noteEn": "Whole-string wrap (wrapString): 〖 U+3016 / 〗 U+3017 white lenticular brackets",
+      "steps": [
+        { "op": "wrapString", "prefix": "〖", "suffix": "〗" }
+      ]
+    },
+    {
+      "id": "deco-bracket-tortoise",
+      "name": "龟甲括号 〔〕",
+      "nameEn": "Tortoise Shell Brackets 〔〕",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：〔 U+3014 / 〕 U+3015，龟甲（圆头）括号",
+      "noteEn": "Whole-string wrap (wrapString): 〔 U+3014 / 〕 U+3015 tortoise shell brackets",
+      "steps": [
+        { "op": "wrapString", "prefix": "〔", "suffix": "〕" }
+      ]
+    },
+    {
+      "id": "deco-bracket-book",
+      "name": "书名号 《》",
+      "nameEn": "Book Title Marks 《》",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：《 U+300A / 》 U+300B，中文双书名号",
+      "noteEn": "Whole-string wrap (wrapString): 《 U+300A / 》 U+300B Chinese double book-title marks",
+      "steps": [
+        { "op": "wrapString", "prefix": "《", "suffix": "》" }
+      ]
+    },
+    {
+      "id": "deco-bracket-book-single",
+      "name": "单书名号 〈〉",
+      "nameEn": "Single Book Title Marks 〈〉",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：〈 U+3008 / 〉 U+3009，中文单书名号",
+      "noteEn": "Whole-string wrap (wrapString): 〈 U+3008 / 〉 U+3009 Chinese single book-title marks",
+      "steps": [
+        { "op": "wrapString", "prefix": "〈", "suffix": "〉" }
+      ]
+    },
+    {
+      "id": "deco-bracket-half",
+      "name": "半边括号 ⸢⸣",
+      "nameEn": "Top Half Brackets ⸢⸣",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：⸢ U+2E22 / ⸣ U+2E23，上置半边括号（补充标点区）",
+      "noteEn": "Whole-string wrap (wrapString): ⸢ U+2E22 / ⸣ U+2E23 top half brackets (supplemental punctuation)",
+      "steps": [
+        { "op": "wrapString", "prefix": "⸢", "suffix": "⸣" }
+      ]
+    },
+    {
+      "id": "deco-bracket-ornate",
+      "name": "花式括号 ⟅⟆",
+      "nameEn": "Ornate S Brackets ⟅⟆",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：⟅ U+27C5 / ⟆ U+27C6，S 形空心花式括号",
+      "noteEn": "Whole-string wrap (wrapString): ⟅ U+27C5 / ⟆ U+27C6 white S-shaped ornate brackets",
+      "steps": [
+        { "op": "wrapString", "prefix": "⟅", "suffix": "⟆" }
+      ]
+    },
+    {
+      "id": "deco-star-four",
+      "name": "四角星 ✦",
+      "nameEn": "Four-Pointed Star ✦",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：✦ U+2726 黑四角星，两侧各一",
+      "noteEn": "Whole-string wrap (wrapString): ✦ U+2726 black four-pointed stars on both sides",
+      "steps": [
+        { "op": "wrapString", "prefix": "✦ ", "suffix": " ✦" }
+      ]
+    },
+    {
+      "id": "deco-star-outline",
+      "name": "描边星 ✩",
+      "nameEn": "Outlined Star ✩",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：✩ U+2729 描边五角星，两侧各一",
+      "noteEn": "Whole-string wrap (wrapString): ✩ U+2729 stress-outlined white stars on both sides",
+      "steps": [
+        { "op": "wrapString", "prefix": "✩ ", "suffix": " ✩" }
+      ]
+    },
+    {
+      "id": "deco-sparkle",
+      "name": "星芒 ❇",
+      "nameEn": "Sparkle ❇",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：❇ U+2747 八角星芒，两侧各一",
+      "noteEn": "Whole-string wrap (wrapString): ❇ U+2747 eight-pointed sparkles on both sides",
+      "steps": [
+        { "op": "wrapString", "prefix": "❇ ", "suffix": " ❇" }
+      ]
+    },
+    {
+      "id": "deco-flower-white",
+      "name": "小白花 ❀",
+      "nameEn": "White Florette ❀",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：❀ U+2740 空心小花，两侧各一",
+      "noteEn": "Whole-string wrap (wrapString): ❀ U+2740 white florettes on both sides",
+      "steps": [
+        { "op": "wrapString", "prefix": "❀ ", "suffix": " ❀" }
+      ]
+    },
+    {
+      "id": "deco-flower-bloom",
+      "name": "绽放花 ✿",
+      "nameEn": "Blooming Florette ✿",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：✿ U+273F 实心花瓣，两侧各一",
+      "noteEn": "Whole-string wrap (wrapString): ✿ U+273F black florettes on both sides",
+      "steps": [
+        { "op": "wrapString", "prefix": "✿ ", "suffix": " ✿" }
+      ]
+    },
+    {
+      "id": "deco-snow",
+      "name": "雪花 ❄",
+      "nameEn": "Snowflake ❄",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：❄ U+2744 六角雪花，两侧各一",
+      "noteEn": "Whole-string wrap (wrapString): ❄ U+2744 snowflakes on both sides",
+      "steps": [
+        { "op": "wrapString", "prefix": "❄ ", "suffix": " ❄" }
+      ]
+    },
+    {
+      "id": "deco-music-note",
+      "name": "音符 ♪",
+      "nameEn": "Music Note ♪",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：♪ U+266A 八分音符，两侧各一",
+      "noteEn": "Whole-string wrap (wrapString): ♪ U+266A eighth notes on both sides",
+      "steps": [
+        { "op": "wrapString", "prefix": "♪ ", "suffix": " ♪" }
+      ]
+    },
+    {
+      "id": "deco-heart-line",
+      "name": "空心爱心 ♡",
+      "nameEn": "Outlined Heart ♡",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：♡ U+2661 空心爱心，两侧各一",
+      "noteEn": "Whole-string wrap (wrapString): ♡ U+2661 white heart suits on both sides",
+      "steps": [
+        { "op": "wrapString", "prefix": "♡ ", "suffix": " ♡" }
+      ]
+    },
+    {
+      "id": "deco-heart-ribbon",
+      "name": "飘带爱心 ❥",
+      "nameEn": "Heart Ribbon ❥",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：❥ U+2765 旋转重爱心飘带，两侧各一",
+      "noteEn": "Whole-string wrap (wrapString): ❥ U+2765 rotated heavy black heart bullets on both sides",
+      "steps": [
+        { "op": "wrapString", "prefix": "❥ ", "suffix": " ❥" }
+      ]
+    },
+    {
+      "id": "deco-arrow-bold",
+      "name": "粗箭头 ➤",
+      "nameEn": "Bold Arrow ➤",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：➤ U+27A4 黑色右箭头，两侧各一",
+      "noteEn": "Whole-string wrap (wrapString): ➤ U+27A4 black rightwards arrowheads on both sides",
+      "steps": [
+        { "op": "wrapString", "prefix": "➤ ", "suffix": " ➤" }
+      ]
+    },
+    {
+      "id": "deco-frame-double",
+      "name": "双线框角 ╔═╗",
+      "nameEn": "Double-Line Frame ╔═╗",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：╔ U+2554 / ═ U+2550 / ╗ U+2557，双线制表符框角（单行近似画框）",
+      "noteEn": "Whole-string wrap (wrapString): ╔ U+2554 / ═ U+2550 / ╗ U+2557 double box-drawing corners (single-line frame)",
+      "steps": [
+        { "op": "wrapString", "prefix": "╔═ ", "suffix": " ═╗" }
+      ]
+    },
+    {
+      "id": "deco-frame-single",
+      "name": "单线框角 ┌─┐",
+      "nameEn": "Single-Line Frame ┌─┐",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：┌ U+250C / ─ U+2500 / ┐ U+2510，单线制表符框角（单行近似画框）",
+      "noteEn": "Whole-string wrap (wrapString): ┌ U+250C / ─ U+2500 / ┐ U+2510 light box-drawing corners (single-line frame)",
+      "steps": [
+        { "op": "wrapString", "prefix": "┌─ ", "suffix": " ─┐" }
+      ]
+    },
+    {
+      "id": "deco-frame-rounded",
+      "name": "圆角框 ╭─╮",
+      "nameEn": "Rounded Frame ╭─╮",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：╭ U+256D / ─ U+2500 / ╮ U+256E，圆角制表符（单行近似画框）",
+      "noteEn": "Whole-string wrap (wrapString): ╭ U+256D / ─ U+2500 / ╮ U+256E rounded box-drawing corners (single-line frame)",
+      "steps": [
+        { "op": "wrapString", "prefix": "╭─ ", "suffix": " ─╮" }
+      ]
+    },
+    {
+      "id": "deco-frame-heavy",
+      "name": "粗线框角 ┏━┓",
+      "nameEn": "Heavy Frame ┏━┓",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：┏ U+250F / ━ U+2501 / ┓ U+2513，粗线制表符框角（单行近似画框）",
+      "noteEn": "Whole-string wrap (wrapString): ┏ U+250F / ━ U+2501 / ┓ U+2513 heavy box-drawing corners (single-line frame)",
+      "steps": [
+        { "op": "wrapString", "prefix": "┏━ ", "suffix": " ━┓" }
+      ]
+    },
+    {
+      "id": "deco-frame-bars",
+      "name": "双线侧栏 ║",
+      "nameEn": "Double Side Bars ║",
+      "category": "decoration",
+      "note": "整串包围（wrapString）：║ U+2551 双线竖条夹住全文",
+      "noteEn": "Whole-string wrap (wrapString): ║ U+2551 double vertical bars flanking the text",
+      "steps": [
+        { "op": "wrapString", "prefix": "║ ", "suffix": " ║" }
+      ]
+    },
+    {
+      "id": "deco-space-dot",
+      "name": "间隔点距 ·",
+      "nameEn": "Middle-Dot Spacing ·",
+      "category": "decoration",
+      "note": "字素间分隔（spacing）：· U+00B7 间隔号逐字插入",
+      "noteEn": "Grapheme separator (spacing): · U+00B7 middle dot inserted between characters",
+      "steps": [
+        { "op": "spacing", "separator": "·" }
+      ]
+    },
+    {
+      "id": "deco-space-katakana",
+      "name": "全角点距 ・",
+      "nameEn": "Katakana Middle-Dot Spacing ・",
+      "category": "decoration",
+      "note": "字素间分隔（spacing）：・ U+30FB 片假名间隔号（全角宽）",
+      "noteEn": "Grapheme separator (spacing): ・ U+30FB katakana middle dot (fullwidth)",
+      "steps": [
+        { "op": "spacing", "separator": "・" }
+      ]
+    },
+    {
+      "id": "deco-space-circle",
+      "name": "圆圈距 ○",
+      "nameEn": "Circle Spacing ○",
+      "category": "decoration",
+      "note": "字素间分隔（spacing）：○ U+25CB 空心圆逐字分隔",
+      "noteEn": "Grapheme separator (spacing): ○ U+25CB white circles between characters",
+      "steps": [
+        { "op": "spacing", "separator": "○" }
+      ]
+    },
+    {
+      "id": "deco-space-line",
+      "name": "横线距 ─",
+      "nameEn": "Line Spacing ─",
+      "category": "decoration",
+      "note": "字素间分隔（spacing）：─ U+2500 制表符横线，把每个字连成一条线",
+      "noteEn": "Grapheme separator (spacing): ─ U+2500 box-drawing horizontal line chaining characters",
+      "steps": [
+        { "op": "spacing", "separator": "─" }
+      ]
+    },
+    {
+      "id": "deco-each-star",
+      "name": "逐字星 ✦",
+      "nameEn": "Per-char Star ✦",
+      "category": "decoration",
+      "note": "逐字包围（wrapEach）：每个字前加 ✦ U+2726",
+      "noteEn": "Per-grapheme wrap (wrapEach): prepends ✦ U+2726 to every character",
+      "steps": [
+        { "op": "wrapEach", "prefix": "✦ ", "suffix": "" }
+      ]
+    },
+    {
+      "id": "deco-each-heart",
+      "name": "逐字爱心 ♡",
+      "nameEn": "Per-char Heart ♡",
+      "category": "decoration",
+      "note": "逐字包围（wrapEach）：每个字前加 ♡ U+2661",
+      "noteEn": "Per-grapheme wrap (wrapEach): prepends ♡ U+2661 to every character",
+      "steps": [
+        { "op": "wrapEach", "prefix": "♡ ", "suffix": "" }
+      ]
+    },
+    {
+      "id": "deco-each-flower",
+      "name": "逐字花 ❀",
+      "nameEn": "Per-char Flower ❀",
+      "category": "decoration",
+      "note": "逐字包围（wrapEach）：每个字前加 ❀ U+2740",
+      "noteEn": "Per-grapheme wrap (wrapEach): prepends ❀ U+2740 to every character",
+      "steps": [
+        { "op": "wrapEach", "prefix": "❀ ", "suffix": "" }
+      ]
+    },
+    {
+      "id": "deco-digits-negative",
+      "name": "黑底圈数字 ❶",
+      "nameEn": "Negative Circled Digits ❶",
+      "category": "decoration",
+      "note": "内联映射表（mapReplace）：0→⓿ U+24FF、1→❶ U+2776 …… 9→❾ U+277E，只影响数字",
+      "noteEn": "Inline map (mapReplace): 0→⓿ U+24FF, 1→❶ U+2776 … 9→❾ U+277E; digits only",
+      "steps": [
+        {
+          "op": "mapReplace",
+          "map": {
+            "0": "⓿",
+            "1": "❶",
+            "2": "❷",
+            "3": "❸",
+            "4": "❹",
+            "5": "❺",
+            "6": "❻",
+            "7": "❼",
+            "8": "❽",
+            "9": "❾"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -16,9 +16,14 @@ public sealed class UsageState
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
+    internal static string? StatePathOverrideForTests;
+
+    private static string ActiveStatePath => StatePathOverrideForTests ?? StatePath;
+
     private readonly object _gate = new();
     private List<string> _pinned = [];
     private List<string> _recent = [];
+    private List<string> _disabledPacks = [];
     private string? _language; // "zh" / "en" / null=跟随系统（三端共享的界面语言偏好）
 
     public UsageState()
@@ -127,16 +132,60 @@ public sealed class UsageState
         Changed?.Invoke();
     }
 
+    /// <summary>已停用的样式包名（按包名持久化，三端共享）。停用包的样式不进入合并目录，包本身仍在已安装列表中。</summary>
+    public IReadOnlyCollection<string> DisabledPacks
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _disabledPacks.ToArray();
+            }
+        }
+    }
+
+    public bool IsPackDisabled(string packName)
+    {
+        lock (_gate)
+        {
+            return _disabledPacks.Contains(packName);
+        }
+    }
+
+    /// <summary>停用/启用样式包（按包名）。变更即持久化并广播 <see cref="Changed"/>；未变化不落盘不广播。</summary>
+    public void SetPackDisabled(string packName, bool disabled)
+    {
+        lock (_gate)
+        {
+            if (disabled)
+            {
+                if (_disabledPacks.Contains(packName))
+                {
+                    return; // 未变化不落盘不广播
+                }
+
+                _disabledPacks.Add(packName);
+            }
+            else if (!_disabledPacks.Remove(packName))
+            {
+                return;
+            }
+        }
+
+        Save();
+        Changed?.Invoke();
+    }
+
     private void Load()
     {
         try
         {
-            if (!File.Exists(StatePath))
+            if (!File.Exists(ActiveStatePath))
             {
                 return;
             }
 
-            using var doc = JsonDocument.Parse(File.ReadAllText(StatePath));
+            using var doc = JsonDocument.Parse(File.ReadAllText(ActiveStatePath));
             var root = doc.RootElement;
             if (root.TryGetProperty("pinned", out var pinned) && pinned.ValueKind == JsonValueKind.Array)
             {
@@ -162,6 +211,17 @@ public sealed class UsageState
             {
                 _language = language.GetString();
             }
+
+            // 旧版状态文件没有 disabledPacks 字段：保持空集
+            if (root.TryGetProperty("disabledPacks", out var disabledPacks) && disabledPacks.ValueKind == JsonValueKind.Array)
+            {
+                _disabledPacks = disabledPacks.EnumerateArray()
+                    .Where(e => e.ValueKind == JsonValueKind.String)
+                    .Select(e => e.GetString()!)
+                    .Where(s => !string.IsNullOrEmpty(s))
+                    .Distinct()
+                    .ToList();
+            }
         }
         catch (Exception)
         {
@@ -173,14 +233,14 @@ public sealed class UsageState
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(StatePath)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(ActiveStatePath)!);
             string json;
             lock (_gate)
             {
-                json = JsonSerializer.Serialize(new { pinned = _pinned, recent = _recent, language = _language }, JsonOptions);
+                json = JsonSerializer.Serialize(new { pinned = _pinned, recent = _recent, language = _language, disabledPacks = _disabledPacks }, JsonOptions);
             }
 
-            File.WriteAllText(StatePath, json);
+            File.WriteAllText(ActiveStatePath, json);
         }
         catch (Exception)
         {

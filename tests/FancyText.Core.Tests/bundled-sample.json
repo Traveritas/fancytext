@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "官方样例包",
+  "author": "FancyText",
+  "description": "内嵌官方包机制的合成测试包（非真实官方包）",
+  "styles": [
+    {
+      "id": "bundled-sample",
+      "name": "样例书名号",
+      "nameEn": "Sample Corner Brackets",
+      "category": "decoration",
+      "steps": [ { "op": "wrapString", "prefix": "「", "suffix": "」" } ]
+    }
+  ]
+}

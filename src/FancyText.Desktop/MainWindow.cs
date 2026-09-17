@@ -44,8 +44,9 @@ internal sealed class MainWindow : Window
     /// 预览字体回退链：花式样式横跨十余个文字系统，单一字体必然出豆腐块。
     /// 依次回退到覆盖符号/古文/南亚/藏文/东南亚文字系统的系统字体（未安装的会被跳过）。
     /// 特意不含 Segoe UI Emoji——Windows 不渲染国旗 emoji，区域指示符 Symbol 即可覆盖，白加载一个大字体。
+    /// internal：设置页样式包面板的行内预览共用同一条链（普通 TextBlock，不用本窗私有的 PreviewTextBlock）。
     /// </summary>
-    private const string PreviewFontChain =
+    internal const string PreviewFontChain =
         "Microsoft YaHei UI, Segoe UI, Segoe UI Symbol, Segoe UI Historic, " +
         "Nirmala UI, Ebrima, Microsoft Himalaya, Leelawadee UI, Lao UI, Sylfaen";
 
@@ -258,6 +259,9 @@ internal sealed class MainWindow : Window
 
     /// <summary>设置窗用：当前主题（自身配色的基准）。</summary>
     internal Theme CurrentTheme => _theme;
+
+    /// <summary>设置页样式包预览用：当前输入框文本（弹窗从未唤出过时为空串，调用方自行兜底）。</summary>
+    internal string CurrentInput => _inputBox.Text;
 
     // ================================================== 布局（纯代码，可整体重建） ==================================================
 
