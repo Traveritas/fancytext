@@ -325,7 +325,7 @@ internal sealed class MainWindow : Window
             Style = ghostStyle, // 幽灵风：透明底（前景色/悬停覆盖层由样式驱动），不再有胶囊块
             Padding = new Thickness(9, 5, 9, 5),
             Background = Brushes.Transparent,
-            ToolTip = Loc.S(lang, "筛选分类", "Filter category"),
+            ToolTip = Loc.S(lang, "筛选分类（Ctrl+Tab 循环切换）", "Filter category (Ctrl+Tab to cycle)"),
             Cursor = Cursors.Hand,
             Margin = new Thickness(6, 0, 2, 0),
         };
@@ -714,6 +714,17 @@ internal sealed class MainWindow : Window
         SyncFilterVisuals();
         RebuildList();
         _inputBox.Focus();
+    }
+
+    /// <summary>Ctrl+Tab / Ctrl+Shift+Tab：按工具栏顺序循环切换筛选（全部→收藏→最近→六分类，环绕）。
+    /// 纯键盘通道——三个筛选按钮（下拉/⭐/🕘）的键盘等价物；焦点经收口回到输入框，↑↓ 浏览不中断。</summary>
+    private void CycleFilter(int delta)
+    {
+        var catalog = FilterOption.Catalog(Lang).ToArray();
+        var index = Array.FindIndex(catalog, o => o.Equals(_filter));
+        index = (index + delta + catalog.Length) % catalog.Length;
+        _filter = catalog[index];
+        ApplyFilterChange();
     }
 
     /// <summary>
@@ -1484,6 +1495,14 @@ internal sealed class MainWindow : Window
                 break;
             case Key.Up when Keyboard.Modifiers == ModifierKeys.None:
                 MoveSelection(-1);
+                e.Handled = true;
+                break;
+            case Key.Tab when Keyboard.Modifiers == ModifierKeys.Control:
+                CycleFilter(1);
+                e.Handled = true; // 拦下：否则焦点会移出输入框
+                break;
+            case Key.Tab when Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift):
+                CycleFilter(-1);
                 e.Handled = true;
                 break;
         }
