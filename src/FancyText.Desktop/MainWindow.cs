@@ -85,9 +85,9 @@ internal sealed class MainWindow : Window
 
     private string? _savedSelectedId; // 进输入区前的选中（↓ 回列表区时优先恢复）
 
-    /// <summary>键盘焦点分区：列表区（有选中行）/ 输入区（清空选中、全选提示）/ 按钮区（chip/⭐/🕘，overlay 高亮）。
-    /// 真实键盘焦点永远留在输入框，分区只是窗口级路由状态——input ⇄ chip ⇄ ⭐ ⇄ 🕘 链式穿梭。</summary>
-    private enum FocusZone { List, Input, Buttons }
+    /// <summary>键盘焦点分区：列表区 / 按钮区（chip/⭐/🕘，overlay 高亮）。真实键盘焦点永远留在输入框，
+    /// 打字随时回输入；↑↓ 在列表与按钮区间进出，←→ 只在三个按钮间循环。</summary>
+    private enum FocusZone { List, Buttons }
 
     private FocusZone _zone = FocusZone.List;
     private int _buttonZoneIndex; // 0=chip 1=⭐ 2=🕘
@@ -1376,8 +1376,8 @@ internal sealed class MainWindow : Window
             _listBox.ScrollIntoView(selected);
         }
 
-        // 键盘分区随重建重置：有选中=列表区，空列表=输入区；顺带熄灭按钮区高亮（防残留）
-        _zone = _listBox.SelectedItem is null ? FocusZone.Input : FocusZone.List;
+        // 键盘分区随重建重置为列表区（有无选中皆可：空列表时 ↑ 也能进按钮区）；顺带熄灭按钮区高亮残留
+        _zone = FocusZone.List;
         LeaveButtonsZoneVisual();
 
         var truncated = !string.Equals(previewInput, text, StringComparison.Ordinal);
@@ -1597,7 +1597,7 @@ internal sealed class MainWindow : Window
                 }
                 else if (_zone == FocusZone.Buttons)
                 {
-                    LeaveButtonsZone(toInput: true); // 按钮区 Esc 回输入区，不收窗口
+                    EnterListZone(); // 按钮区 Esc 回列表区（恢复原选中），不收窗口
                 }
                 else if (_drillFamily is not null)
                 {
@@ -1629,7 +1629,7 @@ internal sealed class MainWindow : Window
                 }
                 else
                 {
-                    EnterListZone(); // 输入区/按钮区 ↓ 回列表（优先恢复原选中）
+                    EnterListZone(); // 按钮区 ↓ 回列表（优先恢复原选中）
                 }
 
                 e.Handled = true;
@@ -1637,11 +1637,11 @@ internal sealed class MainWindow : Window
             case Key.Up when Keyboard.Modifiers == ModifierKeys.None:
                 if (_zone == FocusZone.List && _listBox.SelectedIndex <= 0)
                 {
-                    EnterInputZone(); // 列表到顶再 ↑：清空选中进输入区（全选提示"正在编辑"）
+                    EnterButtonsZone(0); // 列表到顶再 ↑：进按钮区（chip）
                 }
                 else if (_zone == FocusZone.Buttons)
                 {
-                    LeaveButtonsZone(toInput: true); // 按钮区 ↑ 回输入区
+                    EnterListZone(); // 按钮区 ↑ 回列表区
                 }
                 else if (_zone == FocusZone.List)
                 {
@@ -1653,12 +1653,7 @@ internal sealed class MainWindow : Window
             case Key.Left when Keyboard.Modifiers == ModifierKeys.None:
                 if (_zone == FocusZone.Buttons)
                 {
-                    MoveButtonZone(-1); // 按钮区内 ←（到 chip 再 ← 回输入区）
-                    e.Handled = true;
-                }
-                else if (_zone == FocusZone.Input && InputCaretAtStart())
-                {
-                    EnterButtonsZone(2); // 输入区行首 ← → 绕到 🕘
+                    MoveButtonZone(-1); // chip ⇄ ⭐ ⇄ 🕘 三键循环
                     e.Handled = true;
                 }
                 else if (_zone == FocusZone.List && _drillFamily is not null)
@@ -1671,18 +1666,18 @@ internal sealed class MainWindow : Window
             case Key.Right when Keyboard.Modifiers == ModifierKeys.None:
                 if (_zone == FocusZone.Buttons)
                 {
-                    MoveButtonZone(1); // 按钮区内 →（到 🕘 再 → 回输入区）
-                    e.Handled = true;
-                }
-                else if (_zone == FocusZone.Input && InputCaretAtEnd())
-                {
-                    EnterButtonsZone(0); // 输入区行尾 → 到 chip
+                    MoveButtonZone(1);
                     e.Handled = true;
                 }
                 else if (_zone == FocusZone.List &&
                          _listBox.SelectedItem is StyleListItem { Kind: StyleListItem.KindFamily, FamilyKey: { } fam })
                 {
                     DrillIn(fam); // 族条目 → = 钻入（Enter 的等价捷径）
+                    e.Handled = true;
+                }
+                else if (_zone == FocusZone.List)
+                {
+                    EnterButtonsZone(0); // 非族条目 → = 向右进按钮区（chip）
                     e.Handled = true;
                 }
 
@@ -1819,64 +1814,38 @@ internal sealed class MainWindow : Window
         _listBox.ScrollIntoView(_listBox.SelectedItem);
     }
 
-    // ---------- 键盘焦点分区（列表区/输入区/按钮区；真实焦点永留输入框，见 FocusZone） ----------
+    // ---------- 键盘焦点分区（列表区/按钮区；真实焦点永留输入框，打字随时回输入） ----------
 
-    /// <summary>进输入区：清空列表选中（记下 StyleId 供 ↓ 恢复）并全选输入文字——"正在编辑"的视觉提示。</summary>
-    private void EnterInputZone()
+    /// <summary>进按钮区（chip=0 ⭐=1 🕘=2）：记下当前选中（供回列表恢复）→ 清选中 → 幽灵模板 HoverOverlay 高亮。</summary>
+    private void EnterButtonsZone(int index)
     {
         _savedSelectedId = (_listBox.SelectedItem as StyleListItem)?.StyleId ?? _savedSelectedId;
         _listBox.SelectedIndex = -1;
-        _zone = FocusZone.Input;
-        _inputBox.Focus();
-        _inputBox.SelectAll();
-    }
-
-    /// <summary>回列表区：优先恢复进输入区前的选中（按 ID），否则第一项；列表为空则留在输入区。</summary>
-    private void EnterListZone()
-    {
-        LeaveButtonsZoneVisual();
-        if (_currentItems.Count == 0)
-        {
-            _zone = FocusZone.Input;
-            return;
-        }
-
-        _zone = FocusZone.List;
-        var target = _currentItems.FirstOrDefault(i => i.StyleId == _savedSelectedId) ?? _currentItems[0];
-        _listBox.SelectedItem = target;
-        _listBox.ScrollIntoView(target);
-    }
-
-    /// <summary>进按钮区（chip=0 ⭐=1 🕘=2）：幽灵模板 HoverOverlay 高亮，真实焦点不动。</summary>
-    private void EnterButtonsZone(int index)
-    {
         _zone = FocusZone.Buttons;
         _buttonZoneIndex = index;
         SyncButtonZoneVisual();
     }
 
-    /// <summary>按钮区内穿梭：input ⇄ chip ⇄ ⭐ ⇄ 🕘，越界回输入区。</summary>
-    private void MoveButtonZone(int delta)
+    /// <summary>回列表区：优先恢复进按钮区前的选中（按 ID），否则第一项；列表为空则只落分区。</summary>
+    private void EnterListZone()
     {
-        var next = _buttonZoneIndex + delta;
-        if (next < 0 || next > 2)
+        LeaveButtonsZoneVisual();
+        _zone = FocusZone.List;
+        if (_currentItems.Count == 0)
         {
-            EnterInputZone();
             return;
         }
 
-        _buttonZoneIndex = next;
-        SyncButtonZoneVisual();
+        var target = _currentItems.FirstOrDefault(i => i.StyleId == _savedSelectedId) ?? _currentItems[0];
+        _listBox.SelectedItem = target;
+        _listBox.ScrollIntoView(target);
     }
 
-    /// <summary>离开按钮区：熄高亮后按去向转移（输入区）。</summary>
-    private void LeaveButtonsZone(bool toInput)
+    /// <summary>按钮区内循环：chip ⇄ ⭐ ⇄ 🕘（只在这三个之间绕；退出走 ↓/Esc 回列表区）。</summary>
+    private void MoveButtonZone(int delta)
     {
-        LeaveButtonsZoneVisual();
-        if (toInput)
-        {
-            EnterInputZone();
-        }
+        _buttonZoneIndex = ((_buttonZoneIndex + delta) % 3 + 3) % 3;
+        SyncButtonZoneVisual();
     }
 
     /// <summary>按钮区 Enter：chip=开关筛选菜单（按键随后移交菜单路由）；⭐/🕘=切换收藏/最近筛选。</summary>
@@ -1930,14 +1899,6 @@ internal sealed class MainWindow : Window
             overlay.Opacity = on ? 1 : 0;
         }
     }
-
-    /// <summary>输入区 ← 进按钮区的条件：全选态或光标在文首（其余情况 ← 是正常文本编辑，不拦）。</summary>
-    private bool InputCaretAtStart() =>
-        _inputBox.SelectionLength == _inputBox.Text.Length || _inputBox.CaretIndex == 0;
-
-    /// <summary>输入区 → 进按钮区的条件：全选态或光标在文尾（其余情况 → 是正常文本编辑，不拦）。</summary>
-    private bool InputCaretAtEnd() =>
-        _inputBox.SelectionLength == _inputBox.Text.Length || _inputBox.CaretIndex == _inputBox.Text.Length;
 
     // ================================================== 全局热键 ==================================================
 
