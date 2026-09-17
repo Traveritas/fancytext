@@ -41,6 +41,7 @@ public static class Program
         TestBundledPacks();
         TestLocalization();
         TestChineseStyles();
+        TestStyleFamilies();
 
         Console.WriteLine();
         Console.WriteLine($"通过 {_passed} 项，失败 {_failed} 项");
@@ -789,6 +790,56 @@ public static class Program
         // 目录与英文层同步
         Check(StyleCatalog.All.Count(s => s.Category == TextStyleCategory.Chinese) == 6, "中文分类共 6 个样式");
         Check(Find("pinyin").NameEn == "Pinyin (toned) nǐ hǎo", "中文扩充英文层");
+    }
+
+    /// <summary>家族聚族：前缀归类（含规格指定族与实测 ≥4 的 enclose/border/bold/sans）、包样式归包、未归类为 null、双语族名。</summary>
+    private static void TestStyleFamilies()
+    {
+        Console.WriteLine("样式家族：");
+        // 前缀归类：kebab 首段命中聚族表（无 "-" 的 ID 取全名匹配）
+        Check(StyleFamilies.GetFamilyKey(Find("wing-elegant")) == "wing", "wing-elegant 归 wing 族");
+        Check(StyleFamilies.GetFamilyKey(Find("juhua-1")) == "juhua", "juhua-1 归 juhua 族");
+        Check(StyleFamilies.GetFamilyKey(Find("strikethrough")) == "strikethrough", "无连字符 ID 按全名归 strikethrough 族");
+        Check(StyleFamilies.GetFamilyKey(Find("strikethrough-tilde")) == "strikethrough", "strikethrough-tilde 归 strikethrough 族");
+        Check(StyleFamilies.GetFamilyKey(Find("underline-double")) == "underline", "underline-double 归 underline 族");
+        Check(StyleFamilies.GetFamilyKey(Find("overline")) == "overline", "overline 归 overline 族");
+        Check(StyleFamilies.GetFamilyKey(Find("smoke-arabic")) == "smoke", "smoke-arabic 归 smoke 族");
+        Check(StyleFamilies.GetFamilyKey(Find("zalgo-max")) == "zalgo", "zalgo-max 归 zalgo 族");
+        Check(StyleFamilies.GetFamilyKey(Find("enclose-circle")) == "enclose", "enclose-circle 归 enclose 族");
+        Check(StyleFamilies.GetFamilyKey(Find("border-star")) == "border", "border-star 归 border 族");
+        Check(StyleFamilies.GetFamilyKey(Find("bold-italic")) == "bold", "bold-italic 归 bold 族");
+        Check(StyleFamilies.GetFamilyKey(Find("sans-bold-italic")) == "sans", "sans-bold-italic 归 sans 族");
+
+        // 未归类为 null：首段不在表内（manipuri-underline 的首段是 manipuri，"后缀含 underline"不算）
+        Check(StyleFamilies.GetFamilyKey(Find("manipuri-underline")) is null, "manipuri-underline 不按后缀归族");
+        Check(StyleFamilies.GetFamilyKey(Find("circled")) is null, "circled 成员不足阈值未进表");
+        Check(StyleFamilies.GetFamilyKey(Find("mirror")) is null, "mirror 无族");
+
+        // 包样式一律按包聚族（与 ID 形态无关）
+        var packStyle = new TextStyle
+        {
+            Id = "deco-test", Name = "测试", Category = TextStyleCategory.Decoration,
+            Transform = s => s, Source = new StyleSource.Pack("华丽装饰扩充"),
+        };
+        Check(StyleFamilies.GetFamilyKey(packStyle) == "pack:华丽装饰扩充", "包样式按包聚族");
+        Check(StyleFamilies.GetFamilyKey(Find("bold")) == "bold", "内置 bold 归 bold 族（Source 不影响）");
+
+        // 双语族名：内置按语言，包族返回包名原文，未知键原样兜底
+        Check(StyleFamilies.FamilyDisplayName("wing", AppLanguage.Chinese) == "翅膀", "wing 族中文名");
+        Check(StyleFamilies.FamilyDisplayName("wing", AppLanguage.English) == "Wings", "wing 族英文名");
+        Check(StyleFamilies.FamilyDisplayName("juhua", AppLanguage.English) == "Chrysanthemum", "juhua 族英文名");
+        Check(StyleFamilies.FamilyDisplayName("pack:华丽装饰扩充", AppLanguage.Chinese) == "华丽装饰扩充", "包族名取包名原文（中）");
+        Check(StyleFamilies.FamilyDisplayName("pack:华丽装饰扩充", AppLanguage.English) == "华丽装饰扩充", "包族名取包名原文（英）");
+        Check(StyleFamilies.FamilyDisplayName("no-such-family", AppLanguage.Chinese) == "no-such-family", "未知键原样返回");
+
+        // 表与目录一致性：内置样式的归族键都能取到双语名（不会出现"归了族却没名字"）
+        var builtIn = StyleCatalog.All.Where(s => StyleCatalog.BuiltInIds.Contains(s.Id)).ToList();
+        Check(builtIn.Select(StyleFamilies.GetFamilyKey).Where(k => k is not null)
+                .All(k => StyleFamilies.FamilyDisplayName(k!, AppLanguage.Chinese) != k
+                       && StyleFamilies.FamilyDisplayName(k!, AppLanguage.English) != k),
+            "内置归族键均有双语名");
+        Check(builtIn.Count(s => StyleFamilies.GetFamilyKey(s) == "wing") >= StyleFamilies.MinMembersToGroup,
+            "wing 族实测成员数达到折叠阈值");
     }
 
     private static TextStyle Find(string id) =>

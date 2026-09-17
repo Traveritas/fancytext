@@ -75,6 +75,12 @@ internal sealed class MainWindow : Window
     private List<(FilterOption Option, TextBlock Label, TextBlock Check)> _menuItems = [];
     private List<StyleListItem> _currentItems = [];
     private FilterOption _filter = FilterOption.All;
+
+    /// <summary>返回行的合成 ID（控制字符开头，不可能与 kebab 样式 ID 相撞）：选中恢复按 StyleId 匹配需要它。</summary>
+    private const string BackRowStyleId = "\u0001family-back";
+
+    /// <summary>家族目录钻取状态：非 null 表示正钻在该族里（列表 = 返回行 + 该族全部样式）。</summary>
+    private string? _drillFamily;
     private string _lastCountText = string.Empty; // 计数文本真源：复制提示 1.2s 后原样恢复
     private HwndSource? _hwndSource;
     private bool _hotkeyRegistered;
@@ -534,9 +540,10 @@ internal sealed class MainWindow : Window
             ItemTemplate = CreateItemTemplate(),
             ItemContainerStyle = CreateItemContainerStyle(),
             Foreground = _theme.Text,
+            FocusVisualStyle = null, // 键盘导航已有选中覆盖层，关掉 WPF 默认的整框虚线焦点矩形
         };
         ScrollViewer.SetHorizontalScrollBarVisibility(_listBox, ScrollBarVisibility.Disabled);
-        _listBox.MouseDoubleClick += (_, _) => CommitSelected(); // 双击等价回车
+        _listBox.MouseDoubleClick += (_, _) => ActivateSelected(); // 双击等价回车（族条目钻入/返回行钻出同分派）
 
         // 空状态：列表无结果时居中提示（Meta 色，167ms 淡入），不挡命中测试
         _emptyHint = new TextBlock
@@ -700,9 +707,10 @@ internal sealed class MainWindow : Window
         }
     }
 
-    /// <summary>筛选变化统一收口：同步视觉 → 重建列表 → 焦点回输入框（对齐设计稿）。</summary>
+    /// <summary>筛选变化统一收口：退出钻取 → 同步视觉 → 重建列表 → 焦点回输入框（对齐设计稿）。</summary>
     private void ApplyFilterChange()
     {
+        _drillFamily = null; // 切筛选（胶囊下拉/⭐/🕘 均经此收口）一律回顶层
         SyncFilterVisuals();
         RebuildList();
         _inputBox.Focus();
@@ -1179,7 +1187,8 @@ internal sealed class MainWindow : Window
         var previewInput = TextElementTruncator.Truncate(text, PreviewMaxGraphemes);
         var selectedId = (_listBox.SelectedItem as StyleListItem)?.StyleId;
 
-        List<StyleListItem> items = [];
+        // 先按现行规则产出平铺样式行（每行带族键，家族折叠/钻取视图在平铺结果上做）
+        List<StyleListItem> flat = [];
         foreach (var style in StylesForFilter(_filter))
         {
             string preview;
@@ -1198,7 +1207,7 @@ internal sealed class MainWindow : Window
                 continue;
             }
 
-            items.Add(new StyleListItem
+            flat.Add(new StyleListItem
             {
                 StyleId = style.Id,
                 Name = style.GetName(Lang),
@@ -1207,13 +1216,39 @@ internal sealed class MainWindow : Window
                 CategoryName = style.Source is StyleSource.Pack { PackName: var pack }
                     ? $"{style.Category.DisplayName(Lang)} · {pack}"
                     : style.Category.DisplayName(Lang),
+                FamilyKey = StyleFamilies.GetFamilyKey(style),
             });
+        }
+
+        // 钻取视图 = 返回行 + 该族全部样式（目录序）；族在当前筛选下可见成员不足阈值时自动回落顶层
+        // （换筛选/文本大变都会经此求值，故 ShowPopup 等处无需主动清 _drillFamily）
+        int? drillCount = null;
+        List<StyleListItem> items;
+        if (_drillFamily is { } drill && CanGroupFamilies)
+        {
+            var members = flat.Where(i => i.FamilyKey == drill).ToList();
+            if (members.Count >= StyleFamilies.MinMembersToGroup)
+            {
+                drillCount = members.Count;
+                items = [MakeBackRow(drill), .. members];
+            }
+            else
+            {
+                _drillFamily = null;
+                items = CollapseFamilies(flat);
+            }
+        }
+        else
+        {
+            _drillFamily = null; // 收藏/最近不支持钻取（永远平铺），走到这里一并兜底清掉
+            items = CollapseFamilies(flat);
         }
 
         _currentItems = items;
         _listBox.ItemsSource = items;
 
-        // 尽量保住原选中（如收藏切换后重建），否则选第一项
+        // 尽量保住原选中（如收藏切换后重建），否则选第一项。
+        // 钻入时 selectedId = 族条目的代表样式 ID，天然命中返回行之后的第一个样式行；钻出由 DrillOut 显式恢复。
         _listBox.SelectedItem = items.FirstOrDefault(i => i.StyleId == selectedId) ?? items.FirstOrDefault();
         if (_listBox.SelectedItem is { } selected)
         {
@@ -1221,9 +1256,21 @@ internal sealed class MainWindow : Window
         }
 
         var truncated = !string.Equals(previewInput, text, StringComparison.Ordinal);
-        _lastCountText = Loc.S(Lang,
-            $"{items.Count} 个可用样式" + (truncated ? $" · 预览仅前 {PreviewMaxGraphemes} 字，回车复制完整结果" : string.Empty),
-            $"{items.Count} styles" + (truncated ? $" · preview shows first {PreviewMaxGraphemes} graphemes; Enter copies the full result" : string.Empty));
+        if (drillCount is { } n && _drillFamily is { } drillKey)
+        {
+            var familyName = StyleFamilies.FamilyDisplayName(drillKey, Lang);
+            _lastCountText = Loc.S(Lang,
+                $"{familyName} · {n} 个样式 · Esc 返回",
+                $"{familyName} · {n} styles · Esc back");
+        }
+        else
+        {
+            // 计数按可用样式数（flat），不把族条目行算进去——折叠不改变"有多少样式可用"
+            _lastCountText = Loc.S(Lang,
+                $"{flat.Count} 个可用样式" + (truncated ? $" · 预览仅前 {PreviewMaxGraphemes} 字，回车复制完整结果" : string.Empty),
+                $"{flat.Count} styles" + (truncated ? $" · preview shows first {PreviewMaxGraphemes} graphemes; Enter copies the full result" : string.Empty));
+        }
+
         _statusCount.Text = _lastCountText;
 
         // 空状态：167ms 淡入/淡出（无结果时居中提示，收藏页给专属引导）
@@ -1235,6 +1282,111 @@ internal sealed class MainWindow : Window
         }
 
         UiAnimation.BeginOpacity(_emptyHint, items.Count == 0 ? 1 : 0, UiAnimation.SelectMs);
+    }
+
+    /// <summary>家族折叠仅对「全部/具体分类」启用；收藏/最近永远平铺（列表短，且顺序语义是时间序）。</summary>
+    private bool CanGroupFamilies => !_filter.Pinned && !_filter.Recent;
+
+    /// <summary>
+    /// 平铺样式行 → 家族折叠：同族可见成员 ≥ <see cref="StyleFamilies.MinMembersToGroup"/> 的折叠成一行族条目
+    /// （族条目位置 = 族内首个样式的原位置，保持目录顺序）；不足阈值的族保持平铺。
+    /// </summary>
+    private List<StyleListItem> CollapseFamilies(List<StyleListItem> flat)
+    {
+        if (!CanGroupFamilies)
+        {
+            return flat;
+        }
+
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var item in flat)
+        {
+            if (item.FamilyKey is { } key)
+            {
+                counts[key] = counts.GetValueOrDefault(key) + 1;
+            }
+        }
+
+        var emitted = new HashSet<string>(StringComparer.Ordinal);
+        List<StyleListItem> items = [];
+        foreach (var item in flat)
+        {
+            if (item.FamilyKey is { } key && counts.GetValueOrDefault(key) >= StyleFamilies.MinMembersToGroup)
+            {
+                if (emitted.Add(key))
+                {
+                    items.Add(MakeFamilyRow(key, counts[key], item)); // item 即族内首个（目录序）
+                }
+
+                continue; // 其余成员由族条目代收
+            }
+
+            items.Add(item);
+        }
+
+        return items;
+    }
+
+    /// <summary>族条目：StyleId/预览取代表样式（族内第一个），meta 显示成员数与 ▸ 提示可钻入；外观与普通行一致（同模板）。</summary>
+    private StyleListItem MakeFamilyRow(string familyKey, int memberCount, StyleListItem representative) => new()
+    {
+        StyleId = representative.StyleId,
+        Name = StyleFamilies.FamilyDisplayName(familyKey, Lang),
+        PreviewText = representative.PreviewText,
+        IsPinned = false,
+        CategoryName = representative.CategoryName,
+        Kind = StyleListItem.KindFamily,
+        FamilyKey = familyKey,
+        MemberCount = memberCount,
+        MetaOverride = Loc.S(Lang,
+            $"{StyleFamilies.FamilyDisplayName(familyKey, AppLanguage.Chinese)} · {memberCount} 个样式 ▸",
+            $"{StyleFamilies.FamilyDisplayName(familyKey, AppLanguage.English)} · {memberCount} styles ▸"),
+    };
+
+    /// <summary>钻取视图首行：返回行（预览仅 ‹，meta 留空）。合成 ID 供选中恢复按 StyleId 匹配。</summary>
+    private StyleListItem MakeBackRow(string familyKey) => new()
+    {
+        StyleId = BackRowStyleId,
+        Name = Loc.S(Lang, "返回上一级", "Back"),
+        PreviewText = "‹",
+        IsPinned = false,
+        CategoryName = string.Empty,
+        Kind = StyleListItem.KindBack,
+        FamilyKey = familyKey,
+        MetaOverride = Loc.S(Lang, "返回上一级", "Back"), // 行内也要可见（右对齐小字），不只存在 Name 字段里
+    };
+
+    /// <summary>钻入家族：列表变为「返回行 + 该族全部样式」。选中经 StyleId 恢复天然命中代表样式行（= 返回行后第一个样式行），兜底显式选首个样式行。</summary>
+    private void DrillIn(string familyKey)
+    {
+        _drillFamily = familyKey;
+        RebuildList();
+        if (_listBox.SelectedItem is not StyleListItem { Kind: StyleListItem.KindStyle })
+        {
+            var first = _currentItems.FirstOrDefault(i => i.Kind == StyleListItem.KindStyle);
+            if (first is not null)
+            {
+                _listBox.SelectedItem = first;
+                _listBox.ScrollIntoView(first);
+            }
+        }
+    }
+
+    /// <summary>钻出家族：回顶层列表，选中尽量恢复到对应族条目（族此时若已不再折叠则落到默认选中）。</summary>
+    private void DrillOut()
+    {
+        var family = _drillFamily;
+        _drillFamily = null;
+        RebuildList();
+        if (family is not null)
+        {
+            var row = _currentItems.FirstOrDefault(i => i.Kind == StyleListItem.KindFamily && i.FamilyKey == family);
+            if (row is not null)
+            {
+                _listBox.SelectedItem = row;
+                _listBox.ScrollIntoView(row);
+            }
+        }
     }
 
     private IEnumerable<TextStyle> StylesForFilter(FilterOption filter)
@@ -1296,7 +1448,7 @@ internal sealed class MainWindow : Window
         switch (key)
         {
             case Key.Enter:
-                if (CommitSelected())
+                if (ActivateSelected()) // 按行类型分派：样式=复制，族条目=钻入，返回行=钻出
                 {
                     e.Handled = true;
                 }
@@ -1305,7 +1457,11 @@ internal sealed class MainWindow : Window
             case Key.Escape:
                 if (_filterPopup.IsOpen)
                 {
-                    _filterPopup.IsOpen = false; // 菜单开着先关菜单，再按才隐藏窗口
+                    _filterPopup.IsOpen = false; // 菜单开着先关菜单
+                }
+                else if (_drillFamily is not null)
+                {
+                    DrillOut(); // 钻取中先返回上一级，再按才隐藏窗口
                 }
                 else
                 {
@@ -1330,6 +1486,25 @@ internal sealed class MainWindow : Window
                 MoveSelection(-1);
                 e.Handled = true;
                 break;
+        }
+    }
+
+    /// <summary>
+    /// 回车/双击统一分派：族条目钻入、返回行钻出、样式行复制。
+    /// 必须先按 Kind 分派——族条目的 StyleId 是代表样式 ID，直接进 <see cref="CommitSelected"/> 会被误当普通样式复制。
+    /// </summary>
+    private bool ActivateSelected()
+    {
+        switch (_listBox.SelectedItem)
+        {
+            case StyleListItem { Kind: StyleListItem.KindFamily, FamilyKey: { } family }:
+                DrillIn(family);
+                return true;
+            case StyleListItem { Kind: StyleListItem.KindBack }:
+                DrillOut();
+                return true;
+            default:
+                return CommitSelected();
         }
     }
 
@@ -1398,21 +1573,23 @@ internal sealed class MainWindow : Window
 
     private void TogglePinSelected()
     {
-        if (_listBox.SelectedItem is StyleListItem selected)
+        // 仅样式行可收藏：族条目/返回行是导航行，Ctrl+D 对它们不生效
+        if (_listBox.SelectedItem is StyleListItem { Kind: StyleListItem.KindStyle } selected)
         {
             _usage.TogglePin(selected.StyleId); // Changed → OnUsageChanged 重建列表刷新 ⭐
         }
     }
 
-    /// <summary>从当前筛选结果里随机选一项（换一批）：对 Zalgo 等随机样式尤其有用。</summary>
+    /// <summary>从当前可见行里随机选一个样式（换一批，钻取视图即在该族内随机）：对 Zalgo 等随机样式尤其有用。族条目/返回行是导航行，不参与随机。</summary>
     private void SelectRandom()
     {
-        if (_currentItems.Count == 0)
+        var candidates = _currentItems.Where(i => i.Kind == StyleListItem.KindStyle).ToList();
+        if (candidates.Count == 0)
         {
             return;
         }
 
-        var pick = _currentItems[Random.Shared.Next(_currentItems.Count)];
+        var pick = candidates[Random.Shared.Next(candidates.Count)];
         _listBox.SelectedItem = pick;
         _listBox.ScrollIntoView(pick);
     }
