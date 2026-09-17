@@ -77,7 +77,7 @@ internal static class NativeMethods
     [DllImport("dwmapi.dll")]
     public static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref MARGINS margins);
 
-    // ---------- 工作集修剪（轻量化：隐藏后把常驻内存观感从 ~117MB 压到 10-25MB） ----------
+    // ---------- 工作集修剪（轻量化：隐藏后把常驻内存观感压到 ~7-10MB） ----------
 
     [DllImport("kernel32.dll")]
     public static extern IntPtr GetCurrentProcess(); // 伪句柄，无需关闭

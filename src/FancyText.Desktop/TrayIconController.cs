@@ -107,10 +107,11 @@ internal sealed class TrayIconController : IDisposable
     private void UpdateTooltip() => _notifyIcon.Text =
         Loc.S(_window.Lang, $"花式文字 · {_window.HotkeyDisplay} 唤出", $"Fancy Text · {_window.HotkeyDisplay} to open");
 
-    /// <summary>托盘图标：取 exe 自身的多尺寸图标（csproj ApplicationIcon 嵌入的 app.ico），取 16px 帧。</summary>
+    /// <summary>托盘图标：取 exe 自身的多尺寸图标（csproj ApplicationIcon 嵌入的 app.ico），取 16px 帧；
+    /// 文件无内嵌图标时（dotnet run 开发态）ExtractAssociatedIcon 返回 null，回退系统默认防 NRE。</summary>
     private static Icon CreateIcon()
     {
-        using var extracted = Icon.ExtractAssociatedIcon(Environment.ProcessPath!);
+        using var extracted = Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application;
         return new Icon(extracted, 16, 16); // 多尺寸 ico 里挑 16px 帧；Icon 自持句柄，Dispose 即回收
     }
 

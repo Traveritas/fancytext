@@ -158,6 +158,6 @@ $items = $list.FindAll([System.Windows.Automation.TreeScope]::Descendants,
 foreach ($it in $items) {
     $tb2 = $it.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
         (New-Object System.Windows.Automation.PropertyCondition(
-            [System.Windows.Automation.AutomationElement]::ClassNameProperty, 'TextBlock')))
+            [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'Preview')))
     if ($tb2) { "row: $($tb2.Current.Name)" }
 }

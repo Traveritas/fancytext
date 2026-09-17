@@ -44,12 +44,6 @@ internal static class UiAnimation
     /// <summary>167ms Opacity 渐变（选中/聚焦/空态淡入）。</summary>
     public static DoubleAnimation Fade167(double to, FillBehavior fill = FillBehavior.HoldEnd) => Fade(to, SelectMs, fill: fill);
 
-    /// <summary>167ms 淡入（→1）。</summary>
-    public static DoubleAnimation FadeIn167() => Fade167(1d);
-
-    /// <summary>200ms 位移渐变（唤出，CubicEase EaseOut）。</summary>
-    public static DoubleAnimation Rise200(double to) => Fade(to, ShowMs, CubicOut);
-
     private static DoubleAnimation Fade(double to, int ms, IEasingFunction? easing = null,
         FillBehavior fill = FillBehavior.HoldEnd)
     {

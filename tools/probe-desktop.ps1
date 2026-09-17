@@ -45,7 +45,7 @@ foreach ($it in $list) {
     if ($i -ge 14) { break }
     $tb = $it.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
         (New-Object System.Windows.Automation.PropertyCondition(
-            [System.Windows.Automation.AutomationElement]::ClassNameProperty, 'TextBlock')))
+            [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'Preview')))
     $t = if ($tb) { $tb.Current.Name } else { '<no text>' }
     $hex = ($t.ToCharArray() | Select-Object -First 20 | ForEach-Object { '{0:X4}' -f [int]$_ }) -join ' '
     "row {0,2}: {1}  [{2}]" -f $i, $t, $hex

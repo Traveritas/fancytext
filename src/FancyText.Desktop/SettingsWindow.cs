@@ -60,11 +60,14 @@ internal sealed class SettingsWindow : Window
         FontFamily = new FontFamily("Microsoft YaHei UI, Segoe UI");
         PreviewKeyDown += OnPreviewKeyDown;
 
-        // 窗口图标 = exe 内嵌 app.ico（标题栏/任务栏/Alt+Tab 跟随品牌化）
+        // 窗口图标 = exe 内嵌 app.ico（标题栏/任务栏/Alt+Tab 跟随品牌化）；无内嵌图标时跳过（dotnet run 开发态）
         using (var extracted = System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath!))
         {
-            Icon = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(
-                extracted.Handle, Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+            if (extracted is not null)
+            {
+                Icon = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(
+                    extracted.Handle, Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+            }
         }
 
         SourceInitialized += (_, _) => ApplyWindowChrome();
@@ -107,7 +110,12 @@ internal sealed class SettingsWindow : Window
         root.Children.Add(MakeRow(Loc.S(lang, "强调色", "Accent color"), MakeAccentPanel()));
         root.Children.Add(MakeRow(Loc.S(lang, "预览字号", "Preview size"), MakePreviewSizeCombo()));
         root.Children.Add(MakeRow(Loc.S(lang, "减少动效", "Reduce motion"),
-            MakeToggle(nameof(_settings.ReduceMotion), _settings.ReduceMotion, v => Save(_settings with { ReduceMotion = v }))));
+            MakeToggle(nameof(_settings.ReduceMotion), _settings.ReduceMotion, v =>
+            {
+                Save(_settings with { ReduceMotion = v });
+                // 设置窗自身模板的动画时长在建样式时按总闸烘焙——重建才能即时生效（同语言切换的重入规避）
+                Dispatcher.BeginInvoke(BuildContent);
+            })));
 
         root.Children.Add(MakeSeparator());
 
@@ -472,7 +480,7 @@ internal sealed class SettingsWindow : Window
             TimeSpan.FromMilliseconds(UiAnimation.Enabled ? UiAnimation.HoverMs : 0))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-            FillBehavior = FillBehavior.HoldEnd, // 停在滑动终点（IsChecked 翻转时 ExitActions 接管回程）
+            FillBehavior = on ? FillBehavior.HoldEnd : FillBehavior.Stop, // on 停在 20；off 回本地值 0 并摘钟（不留挂钟）
         };
         Storyboard.SetTargetName(animation, "Thumb");
         Storyboard.SetTargetProperty(animation, new PropertyPath("(UIElement.RenderTransform).(TranslateTransform.X)"));

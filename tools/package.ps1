@@ -3,7 +3,10 @@
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path $PSScriptRoot -Parent
-$version = '1.1.0'
+# 版本号与 csproj 同步（单一真源，避免打包名与内容错位）
+$csproj = [xml][IO.File]::ReadAllText((Join-Path $root 'src\FancyText.Desktop\FancyText.Desktop.csproj'), [Text.UTF8Encoding]::new($false))
+$version = ($csproj.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version
+if (-not $version) { throw 'cannot read Version from csproj' }
 $outDir = Join-Path $root 'dist'
 $stage = Join-Path $outDir "FancyText.Desktop-$version"
 $zipPath = Join-Path $outDir "FancyText.Desktop-$version-win-x64.zip"
@@ -21,11 +24,11 @@ if ($LASTEXITCODE -ne 0) { throw 'publish failed' }
 # pdb 是调试符号，分发不需要（白占体积）
 Get-ChildItem $stage -Filter *.pdb | Remove-Item -Force
 
-$readme = @'
-花式文字 桌面版 v1.1.0
+$readme = @"
+花式文字 桌面版 v$version
 ======================
 
-花式 Unicode 文字转换弹窗：126 种样式实时预览，回车复制。
+花式 Unicode 文字转换弹窗：130 种样式实时预览，回车复制。
 
 快速上手
 --------
@@ -38,8 +41,9 @@ $readme = @'
 设置
 ----
 托盘右键 -> 设置（或运行 exe --settings）：
-主题（浅色/深色/跟随系统）、强调色、预览字号、唤出快捷键、
-开机自启动、唤出时预填剪贴板、复制后收起、弹窗位置。
+语言、主题（浅色/深色/跟随系统）、背景材质（跟随系统 Mica/纯色）、强调色、
+预览字号、减少动效、唤出快捷键、开机自启动、唤出时预填选中文字/剪贴板、
+复制后收起、弹窗位置。
 
 说明
 ----
@@ -47,7 +51,7 @@ $readme = @'
   （desktop.json 设置 / state.json 收藏与最近 / diag.log 诊断日志）。
 - 卸载：托盘退出后删除 exe 即可；若开过"开机自启动"，先在设置里关掉。
 - 姊妹项目：PowerToys Command Palette 插件版（另附），收藏数据互通。
-'@
+"@
 
 [System.IO.File]::WriteAllText((Join-Path $stage 'README.txt'), $readme, [System.Text.UTF8Encoding]::new($true))
 

@@ -172,7 +172,7 @@ internal sealed class MainWindow : Window
 
     /// <summary>
     /// Win11+：用 DWM 系统圆角与阴影替代 AllowsTransparency+DropShadowEffect——
-    /// 位图特效要整面软件渲染缓冲（实测把工作集从 ~70MB 推到 ~190MB，违背轻量化理念），
+    /// 位图特效要整面软件渲染缓冲（实测把工作集从 ~145MB 推到 ~190MB，违背轻量化理念），
     /// DWM 方案零额外缓冲；Win10 上该属性为无操作（方角+阴影，观感可接受）。
     /// </summary>
     private void ApplySystemChrome()
@@ -219,24 +219,32 @@ internal sealed class MainWindow : Window
             string.Equals(_settings.Backdrop, "mica", StringComparison.OrdinalIgnoreCase))
         {
             // 无边框（NCCALCSIZE 0）窗口的 SYSTEMBACKDROP 会"返回成功但什么都不画"——
-            // 先把框架区扩展进客户区，材质才有落笔处；失败则还原防玻璃伪影
+            // 先把框架区扩展进客户区，材质才有落笔处；任一步失败都按 mica 失败处理（防玻璃伪影/透明洞）
             var margins = new NativeMethods.MARGINS { Left = -1, Right = -1, Top = -1, Bottom = -1 };
-            _ = NativeMethods.DwmExtendFrameIntoClientArea(handle, ref margins);
+            var extended = NativeMethods.DwmExtendFrameIntoClientArea(handle, ref margins) == 0;
             const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
             var mica = 2; // DWMSBT_MAINWINDOW
-            _micaActive = NativeMethods.DwmSetWindowAttribute(
+            _micaActive = extended && NativeMethods.DwmSetWindowAttribute(
                 handle, DWMWA_SYSTEMBACKDROP_TYPE, ref mica, sizeof(int)) == 0;
-            if (!_micaActive)
-            {
-                var zero = new NativeMethods.MARGINS();
-                _ = NativeMethods.DwmExtendFrameIntoClientArea(handle, ref zero);
-            }
+        }
+
+        if (!_micaActive)
+        {
+            // HWND 终身复用：从 Mica 切回/初始化时必须复位 DWM 状态——
+            // 否则材质类型与框架扩展残留（DWM 白画一层），交换链残留透明（文字按透明表面走灰阶而非 ClearType）
+            const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+            var auto = 0; // DWMSBT_AUTO
+            _ = NativeMethods.DwmSetWindowAttribute(handle, DWMWA_SYSTEMBACKDROP_TYPE, ref auto, sizeof(int));
+            var zero = new NativeMethods.MARGINS();
+            _ = NativeMethods.DwmExtendFrameIntoClientArea(handle, ref zero);
         }
 
         Background = _micaActive ? Brushes.Transparent : _theme.WindowBackground;
-        if (_micaActive && (_hwndSource ?? HwndSource.FromHwnd(handle)) is { } source)
+        if ((_hwndSource ?? HwndSource.FromHwnd(handle)) is { } source)
         {
-            source.CompositionTarget.BackgroundColor = Colors.Transparent; // 客户区透明，透出 DWM 材质
+            source.CompositionTarget.BackgroundColor = _micaActive
+                ? Colors.Transparent // 客户区透明，透出 DWM 材质
+                : ((SolidColorBrush)_theme.WindowBackground).Color; // 复位不透明：恢复 ClearType
         }
 
         LogDiag($"backdrop: {(_micaActive ? "mica" : "solid")} build={Environment.OSVersion.Version.Build}");
@@ -584,6 +592,13 @@ internal sealed class MainWindow : Window
         }
 
         ApplySystemChrome(); // 主题明暗/背景材质可能变化：重设 DWM 属性（attr 20/38 随主题重设）
+
+        if (IsVisible)
+        {
+            // 系统事件触发的跟随重建（强调色/深浅色切换）：文本已保住，焦点与光标一并归还
+            _inputBox.Focus();
+            _inputBox.CaretIndex = _inputBox.Text.Length;
+        }
     }
 
     private void OnHeaderDrag(object sender, MouseButtonEventArgs e)
@@ -763,6 +778,7 @@ internal sealed class MainWindow : Window
 
         var meta = new FrameworkElementFactory(typeof(PreviewTextBlock.MetaTextBlock));
         meta.SetBinding(PreviewTextBlock.TextProperty, new Binding(nameof(StyleListItem.Meta)));
+        meta.SetValue(System.Windows.Automation.AutomationProperties.AutomationIdProperty, "Meta"); // UIA 探测脚本按 AutomationId 取行（顺序无关）
         meta.SetValue(TextBlock.FontSizeProperty, 11d);
         meta.SetValue(TextBlock.ForegroundProperty, _theme.Meta);
         meta.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
@@ -773,6 +789,7 @@ internal sealed class MainWindow : Window
 
         var preview = new FrameworkElementFactory(typeof(PreviewTextBlock));
         preview.SetBinding(PreviewTextBlock.TextProperty, new Binding(nameof(StyleListItem.PreviewText)));
+        preview.SetValue(System.Windows.Automation.AutomationProperties.AutomationIdProperty, "Preview");
         preview.SetValue(TextBlock.FontSizeProperty, _settings.PreviewFontSize);
         preview.SetValue(TextBlock.FontWeightProperty, FontWeights.Medium);
         preview.SetValue(TextBlock.FontFamilyProperty, new FontFamily(PreviewFontChain)); // 花式字符回退链，防豆腐块
@@ -1060,6 +1077,7 @@ internal sealed class MainWindow : Window
 
         if (!UiAnimation.Enabled)
         {
+            _hiding = true; // 与动画路径一致：FinishHide 的守卫要求置位
             FinishHide();
             return;
         }
@@ -1072,9 +1090,15 @@ internal sealed class MainWindow : Window
         UiAnimation.BeginOpacity(_card, 0, UiAnimation.HideMs, FinishHide);
     }
 
-    /// <summary>退出动画终点：复位动画与终值后真正隐藏（唤出时再设入场起点）。</summary>
+    /// <summary>退出动画终点：复位动画与终值后真正隐藏（唤出时再设入场起点）。
+    /// 守卫：动画期间 ApplySettings 重建换卡 + 唤出打断后，旧时钟的完成回调不得再 Hide。</summary>
     private void FinishHide()
     {
+        if (!_hiding)
+        {
+            return; // 陈旧回调（卡片已被重建/唤出已打断）：丢弃
+        }
+
         _hiding = false;
         _card.BeginAnimation(UIElement.OpacityProperty, null);
         _card.Opacity = 1;
@@ -1108,7 +1132,7 @@ internal sealed class MainWindow : Window
     }
 
     /// <summary>
-    /// 轻量化核心手段：EmptyWorkingSet 把工作集整页换出，任务管理器常驻观感从 ~117MB 降到 10-25MB。
+    /// 轻量化核心手段：EmptyWorkingSet 把工作集整页换出，任务管理器常驻观感压到 ~7-10MB。
     /// 代价是下次唤出要靠软缺页换回页面（慢几十 ms），故只在隐藏一段时间后调用。
     /// </summary>
     private static void TrimWorkingSet()
@@ -1570,17 +1594,39 @@ internal sealed class MainWindow : Window
         {
         }
 
+        /// <summary>Text 属性描述符（静态缓存同一实例，供订阅/反订阅配对使用）。</summary>
+        private static readonly System.ComponentModel.DependencyPropertyDescriptor TextDescriptor =
+            System.ComponentModel.DependencyPropertyDescriptor.FromProperty(TextProperty, typeof(TextBlock));
+
+        private bool _subscribed;
+
         public PreviewTextBlock(bool forMeta)
         {
             _baseFont = forMeta ? MetaBaseFont : BaseFont;
-            // TextBlock.OnPropertyChanged 是密封的，只能用描述符监听 Text 变化；
-            // 描述符持有本实例引用——Unloaded（虚拟化回收/BuildUi 重建）时摘掉，否则旧实例被静态描述符泄漏
-            System.ComponentModel.DependencyPropertyDescriptor
-                .FromProperty(TextProperty, typeof(TextBlock))
-                .AddValueChanged(this, OnTextChanged);
-            Unloaded += (_, _) => System.ComponentModel.DependencyPropertyDescriptor
-                .FromProperty(TextProperty, typeof(TextBlock))
-                .RemoveValueChanged(this, OnTextChanged);
+            // TextBlock.OnPropertyChanged 是密封的，只能用描述符监听 Text 变化。
+            // 构造即订阅（绑定首次推 Text 前必须就位——Loaded 订阅在部分时序下会错过首轮拆分）；
+            // Unloaded（虚拟化回收/BuildUi 重建）摘除防描述符强引用泄漏；Loaded 补订阅并追平错过的文本。
+            Subscribe();
+            Loaded += (_, _) => Subscribe();
+            Unloaded += (_, _) => Unsubscribe();
+        }
+
+        private void Subscribe()
+        {
+            if (!_subscribed)
+            {
+                TextDescriptor.AddValueChanged(this, OnTextChanged);
+                _subscribed = true;
+            }
+        }
+
+        private void Unsubscribe()
+        {
+            if (_subscribed)
+            {
+                TextDescriptor.RemoveValueChanged(this, OnTextChanged);
+                _subscribed = false;
+            }
         }
 
         private void OnTextChanged(object? sender, EventArgs e)

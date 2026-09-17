@@ -6,5 +6,6 @@ obj/
 *.pfx
 *.appx
 *.appxbundle
+AppPackages/
 reference/
 dist/

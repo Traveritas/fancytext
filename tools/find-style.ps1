@@ -157,7 +157,7 @@ function Get-VisibleMetas {
     foreach ($it in $items) {
         $tbs = $it.FindAll([System.Windows.Automation.TreeScope]::Descendants,
             (New-Object System.Windows.Automation.PropertyCondition(
-                [System.Windows.Automation.AutomationElement]::ClassNameProperty, 'TextBlock')))
+                [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'Preview')))
         foreach ($tb2 in $tbs) { $metas += $tb2.Current.Name }
     }
     return ,$metas

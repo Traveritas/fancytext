@@ -44,7 +44,7 @@ function Dump-Rows {
     foreach ($it in $items) {
         $tb = $it.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
             (New-Object System.Windows.Automation.PropertyCondition(
-                [System.Windows.Automation.AutomationElement]::ClassNameProperty, 'TextBlock')))
+                [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'Preview')))
         if ($tb) { $rows += $tb.Current.Name }
     }
     return ,$rows
