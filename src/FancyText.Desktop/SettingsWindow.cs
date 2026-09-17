@@ -912,6 +912,25 @@ internal sealed class SettingsWindow : Window
 
         if (installedByName.TryGetValue(pack.PackName, out var installed))
         {
+            // 内容漂移检测：磁盘文件与内嵌资源不一致 → 提供 [更新]（覆盖重装）
+            if (HasBundledUpdate(pack, installed))
+            {
+                var updateBtn = MakePackButton(Loc.S(_lang, "更新", "Update"));
+                updateBtn.Click += (_, _) =>
+                {
+                    var result = FancyText.Core.StylePacks.InstallBundled(pack);
+                    if (!result.Success)
+                    {
+                        ShowPackError(Loc.S(_lang, $"更新失败：{string.Join("\n", result.Errors)}", $"Update failed: {string.Join("\n", result.Errors)}"));
+                        return;
+                    }
+
+                    _main.Usage.SetPackDisabled(pack.PackName, false);
+                    ApplyPacksChanged(Loc.S(_lang, "已更新 ✓", "Updated ✓"));
+                };
+                buttons.Children.Add(updateBtn);
+            }
+
             AddPackActionButtons(buttons, pack.PackName, _main.Usage.IsPackDisabled(pack.PackName), installed);
         }
         else
@@ -933,7 +952,21 @@ internal sealed class SettingsWindow : Window
             buttons.Children.Add(installBtn);
         }
 
-        return MakePackRow(pack.PackName, pack.Styles, buttons);
+        // 已安装时以磁盘实际内容为准展开预览（防资源/文件漂移），未安装预览内嵌资源
+        return MakePackRow(pack.PackName, installed?.Styles ?? pack.Styles, buttons);
+    }
+
+    /// <summary>官方包磁盘内容与内嵌资源是否不一致（不一致 = 有更新可装）。</summary>
+    private static bool HasBundledUpdate(FancyText.Core.BundledPack pack, FancyText.Core.InstalledPack installed)
+    {
+        try
+        {
+            return !string.Equals(File.ReadAllText(installed.FilePath), pack.Json, StringComparison.Ordinal);
+        }
+        catch (Exception)
+        {
+            return false; // 读不到文件按无更新（行内卸载后重装仍是兜底路径）
+        }
     }
 
     /// <summary>用户导入包行：健康包给启停 + 卸载 + 展开预览；损坏包保持标红，不给启停（只能卸载）。</summary>
@@ -955,6 +988,7 @@ internal sealed class SettingsWindow : Window
             {
                 if (FancyText.Core.StylePacks.Remove(pack))
                 {
+                    _main.Usage.SetPackDisabled(pack.PackName, false); // 同步清停用标记（损坏包也可能是曾停用的好包）
                     ApplyPacksChanged(Loc.S(_lang, $"已卸载 {pack.PackName}", $"Removed {pack.PackName}"));
                 }
             };
@@ -991,6 +1025,7 @@ internal sealed class SettingsWindow : Window
         {
             if (FancyText.Core.StylePacks.Remove(installed))
             {
+                _main.Usage.SetPackDisabled(packName, false); // 卸载顺手清停用标记，防孤儿条目（同名包日后再装不应背着停用态）
                 ApplyPacksChanged(Loc.S(_lang, $"已卸载 {packName}", $"Removed {packName}"));
             }
         };
@@ -1148,6 +1183,14 @@ internal sealed class SettingsWindow : Window
         {
             ShowPackError(Loc.S(_lang, $"导入失败：{string.Join("\n", result.Errors)}", $"Import failed: {string.Join("\n", result.Errors)}"));
             return;
+        }
+
+        // 导入即启用：同名包若曾停用（卸载残留标记/手动停用后重装），必须清标记否则"装了却看不到样式"
+        var importedName = FancyText.Core.StylePacks.LoadInstalled()
+            .FirstOrDefault(p => string.Equals(p.FilePath, result.InstalledPath, StringComparison.OrdinalIgnoreCase))?.PackName;
+        if (importedName is not null)
+        {
+            _main.Usage.SetPackDisabled(importedName, false);
         }
 
         ApplyPacksChanged(Loc.S(_lang, "已导入 ✓（命令面板插件需重启后生效）", "Imported ✓ (Command Palette extension picks it up after restart)"));

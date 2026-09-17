@@ -1,6 +1,11 @@
 # ASCII-only. New filter UI: summon popup, pick a category from the chip's dropdown
 # Popup (separate top-level window, UIA ClassName 'Popup'), then walk down until a
 # visible row whose text contains the needle; leave that row visible.
+# NOTE (family folding): since v1.3.0, style families with >= 4 members collapse
+# into a single family row ("name · N styles >") in All/category views. A needle
+# targeting a style inside a collapsed family will NOT be visible from the top
+# level; drill into the family row first (select it and send {ENTER}), or pick a
+# needle in a flat (non-folded) style. Family rows dump with "N styles >" in meta.
 # Usage: find-style.ps1 -NeedleChars <int[]> [-CatChars <int[]>]
 #   NeedleChars: needle as UTF-16 code units (required)
 #   CatChars:    category label as UTF-16 code units; default = 0x7279 0x6548 (CJK effects)

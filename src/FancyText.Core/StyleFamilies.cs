@@ -31,6 +31,9 @@ public static class StyleFamilies
         ("sans", "无衬线系", "Sans"),
     ];
 
+    /// <summary>聚族表全部键（kebab 首段），供一致性断言/将来其它端复用。</summary>
+    public static IReadOnlyCollection<string> KnownPrefixes { get; } = Table.Select(t => t.Key).ToArray();
+
     /// <summary>
     /// 取样式的族键：包样式 → "pack:" + 包名；内置样式 → ID 首段命中聚族表返回该首段，否则 null（不参与折叠）。
     /// </summary>

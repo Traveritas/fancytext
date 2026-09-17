@@ -83,10 +83,11 @@ internal sealed class MainWindow : Window
     /// <summary>家族目录钻取状态：非 null 表示正钻在该族里（列表 = 返回行 + 该族全部样式）。</summary>
     private string? _drillFamily;
 
-    private string? _savedSelectedId; // 进输入区前的选中（↓ 回列表区时优先恢复）
+    private string? _savedSelectedId; // 进按钮区前的选中（↓/Esc 回列表区时优先恢复）
 
     /// <summary>键盘焦点分区：列表区 / 按钮区（chip/⭐/🕘，overlay 高亮）。真实键盘焦点永远留在输入框，
-    /// 打字随时回输入；↑↓ 在列表与按钮区间进出，←→ 只在三个按钮间循环。</summary>
+    /// 打字随时回输入；↑↓ 在列表与按钮区间进出；←→ 在按钮区三键间循环，在列表区承担家族钻入/返回
+    /// （取舍：列表区非族行的 → 也进按钮区，因此文本光标无法用键盘右移——见 README 快捷键表）。</summary>
     private enum FocusZone { List, Buttons }
 
     private FocusZone _zone = FocusZone.List;
@@ -373,7 +374,7 @@ internal sealed class MainWindow : Window
                 Style = ghostStyle,
                 Tag = option,
                 Padding = new Thickness(10, 6, 10, 6),
-                Background = Brushes.Transparent, // 键盘高亮经 Background 呈现（模板 Grid TemplateBinding 透传）
+                Background = Brushes.Transparent, // 静止态透明；键盘高亮走 HoverOverlay（见 SetMenuItemHighlight，勿写 Background）
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
                 Cursor = Cursors.Hand,
             };
@@ -413,6 +414,11 @@ internal sealed class MainWindow : Window
             if (_filterChip.IsChecked == true)
             {
                 _filterChip.IsChecked = false;
+            }
+
+            if (_zone == FocusZone.Buttons)
+            {
+                SyncButtonZoneVisual(); // 菜单未选即关：按钮区仍在，恢复其高亮（避免"激活但零高亮"的隐形状态）
             }
         };
         // 菜单开着时再点 chip = 收起。事件顺序坑：StaysOpen=false 的 Popup 在鼠标按下时先自行关闭
@@ -563,6 +569,13 @@ internal sealed class MainWindow : Window
         };
         ScrollViewer.SetHorizontalScrollBarVisibility(_listBox, ScrollBarVisibility.Disabled);
         _listBox.MouseDoubleClick += (_, _) => ActivateSelected(); // 双击等价回车（族条目钻入/返回行钻出同分派）
+        _listBox.PreviewMouseLeftButtonDown += (_, _) =>
+        {
+            if (_zone == FocusZone.Buttons)
+            {
+                EnterListZone(); // 鼠标点行即回列表区——否则按钮区残留，Enter 会派发到按钮而不是点击的行
+            }
+        };
 
         // 空状态：列表无结果时居中提示（Meta 色，167ms 淡入），不挡命中测试
         _emptyHint = new TextBlock
@@ -760,6 +773,10 @@ internal sealed class MainWindow : Window
                 _filterPopup.IsOpen = false; // Closed 里复位高亮状态
                 e.Handled = true;
                 return true;
+            case Key.Left:
+            case Key.Right:
+                e.Handled = true; // 菜单开着时 ←→ 消费为 no-op：不许在背后钻取/进按钮区
+                return true;
             case Key.Down when Keyboard.Modifiers == ModifierKeys.None:
                 MoveMenuHighlight(1);
                 e.Handled = true;
@@ -941,6 +958,7 @@ internal sealed class MainWindow : Window
     {
         var style = new Style(typeof(ListBoxItem));
         style.Setters.Add(new Setter(Control.FocusVisualStyleProperty, null)); // 键盘导航已有选中覆盖层，虚线焦点矩形只添乱
+        style.Setters.Add(new Setter(Control.FocusableProperty, false)); // 真实键盘焦点永留输入框（鼠标点行也不夺走）
         style.Setters.Add(new Setter(Control.MarginProperty, new Thickness(0, 0, 0, 2)));
         style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(12, 9, 12, 9)));
         style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch)); // 拉满才有 TextTrimming
@@ -1009,7 +1027,7 @@ internal sealed class MainWindow : Window
 
         if (prefill is not { Length: > 0 } && _settings.PrefillSelection && _settings.PrefillSelectionPlus)
         {
-            // 「加强」兜底：模拟 Ctrl+Insert 复制（UIA 不支持的应用的普适路径），读出即还原剪贴板
+            // 「预填兼容模式」兜底：模拟 Ctrl+Insert 复制（UIA 不支持的应用的普适路径），读出即还原剪贴板
             prefill = Helpers.ClipboardCopyReader.TryRead(out var copyReason);
             LogDiag(prefill is { Length: > 0 }
                 ? "prefill: 经模拟复制（Ctrl+Insert）取得选中文字"
@@ -1603,7 +1621,7 @@ internal sealed class MainWindow : Window
                     ActivateButtonZone(); // 按钮区：chip=开关菜单，⭐/🕘=切换收藏/最近
                     e.Handled = true;
                 }
-                else if (ActivateSelected()) // 列表/输入区按行类型分派：样式=复制，族条目=钻入，返回行=钻出
+                else if (ActivateSelected()) // 列表区按行类型分派：样式=复制，族条目=钻入，返回行=钻出
                 {
                     e.Handled = true;
                 }
@@ -1819,6 +1837,8 @@ internal sealed class MainWindow : Window
         var pick = candidates[Random.Shared.Next(candidates.Count)];
         _listBox.SelectedItem = pick;
         _listBox.ScrollIntoView(pick);
+        _zone = FocusZone.List; // 按钮区按 Ctrl+R 也要把结果交到列表区（否则 Enter 仍触发按钮动作、随机结果被丢弃）
+        LeaveButtonsZoneVisual();
     }
 
     private void MoveSelection(int delta)

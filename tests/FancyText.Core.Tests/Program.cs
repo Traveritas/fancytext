@@ -662,7 +662,7 @@ public static class Program
         Check(sample.Styles.Count == 1 && sample.Styles[0].Id == "bundled-sample"
             && sample.Styles[0].Source is StyleSource.Pack { PackName: "官方样例包" }, "内嵌包样式编译并带来源标记");
 
-        // Core 程序集当前无内嵌包（glob 暂缺不报错）；将来官方包落地后此断言仍成立（解析健康）
+        // 内嵌官方包已落地（deco-wings-pack.json）：枚举非空且逐个解析健康（glob 暂缺时回退为空）
         Check(StylePacks.LoadBundled().All(p => p.Styles.Count > 0 && !string.IsNullOrEmpty(p.PackName)), "Core 程序集 LoadBundled 解析健康");
 
         var tempDir = Path.Combine(Path.GetTempPath(), "fancytext-bundled-test-" + Path.GetRandomFileName());
@@ -840,6 +840,27 @@ public static class Program
             "内置归族键均有双语名");
         Check(builtIn.Count(s => StyleFamilies.GetFamilyKey(s) == "wing") >= StyleFamilies.MinMembersToGroup,
             "wing 族实测成员数达到折叠阈值");
+
+        // 全量一致性①：表内每族都达到折叠阈值（防 ID 增改导致某族静默跌出后无人察觉；
+        // 规格指定的 underline/overline/smoke/zalgo 是"归族但暂不满阈值"的白名单，扩到阈值后须自动折叠）
+        var specAllowedBelow = new HashSet<string> { "underline", "overline", "smoke", "zalgo" };
+        foreach (var key in StyleFamilies.KnownPrefixes)
+        {
+            var count = builtIn.Count(s => StyleFamilies.GetFamilyKey(s) == key);
+            Check(count >= StyleFamilies.MinMembersToGroup || specAllowedBelow.Contains(key),
+                $"族 {key} 成员数与收录承诺一致（{count}）");
+        }
+
+        // 全量一致性②：表外首段均不足阈值（防"该收未收"的静默漏收；包样式不参与此断言）
+        var tableSet = StyleFamilies.KnownPrefixes.ToHashSet(StringComparer.Ordinal);
+        var outside = builtIn
+            .Where(s => StyleFamilies.GetFamilyKey(s) is null)
+            .GroupBy(s => s.Id.Split('-')[0])
+            .Where(g => g.Count() >= StyleFamilies.MinMembersToGroup && !tableSet.Contains(g.Key))
+            .Select(g => g.Key)
+            .ToList();
+        Check(outside.Count == 0, "表外无 ≥阈值 的未收录首段",
+            outside.Count == 0 ? null : $"疑似漏收：{string.Join(",", outside)}");
     }
 
     private static TextStyle Find(string id) =>

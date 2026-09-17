@@ -33,7 +33,8 @@ internal static class SelectedTextReader
         }
         catch (Exception ex)
         {
-            reason = $"异常 {ex.GetType().Name}"; // AggregateException（UIA COM 错误等）一律视为拿不到
+            var actual = ex is AggregateException { InnerException: { } inner } ? inner : ex; // Task.Wait 的聚合异常必须解包，否则诊断只剩 "AggregateException"
+            reason = $"异常 {actual.GetType().Name}";
             return null;
         }
     }

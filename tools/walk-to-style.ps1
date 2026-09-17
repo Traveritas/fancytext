@@ -1,6 +1,10 @@
 # ASCII-only. New filter UI: summon popup, toggle the filter chip, pick a category
 # item inside the dropdown Popup (separate top-level window, UIA ClassName 'Popup'),
 # then walk the list with arrow keys and dump visible rows.
+# NOTE (family folding): since v1.3.0, style families with >= 4 members collapse
+# into a single family row ("name · N styles >") in All/category views, so dumped
+# rows may include family rows instead of the individual styles. Drill into a
+# family row (select it and send {ENTER}) to walk its members; {ESC} backs out.
 # Usage: walk-to-style.ps1 [steps] [catChar0 catChar1 ...]
 #   steps: how many {DOWN} to send (default 12)
 #   catChar*: category label as UTF-16 code units; default = 0x7279 0x6548 (CJK effects)
