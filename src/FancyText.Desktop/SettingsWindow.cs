@@ -212,6 +212,7 @@ internal sealed class SettingsWindow : Window
     private Style CreateComboItemStyle()
     {
         var style = new Style(typeof(ComboBoxItem));
+        style.Setters.Add(new Setter(Control.FocusVisualStyleProperty, null)); // 统一去掉虚线焦点矩形
         style.Setters.Add(new Setter(Control.ForegroundProperty, _theme.Text));
         style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8, 4, 8, 4)));
         var highlighted = new Trigger { Property = ComboBoxItem.IsHighlightedProperty, Value = true };
@@ -230,6 +231,7 @@ internal sealed class SettingsWindow : Window
     private Style CreateComboStyle()
     {
         var style = new Style(typeof(ComboBox));
+        style.Setters.Add(new Setter(Control.FocusVisualStyleProperty, null)); // 统一去掉虚线焦点矩形
 
         // —— 幽灵按钮（显示选中项 + ▾）——
         var selection = new FrameworkElementFactory(typeof(ContentPresenter));
@@ -431,6 +433,7 @@ internal sealed class SettingsWindow : Window
     private Style CreateSwitchStyle()
     {
         var style = new Style(typeof(ToggleButton));
+        style.Setters.Add(new Setter(Control.FocusVisualStyleProperty, null)); // 统一去掉虚线焦点矩形
 
         var track = new FrameworkElementFactory(typeof(Border));
         track.Name = "Track";
@@ -505,6 +508,7 @@ internal sealed class SettingsWindow : Window
     private Style CreateButtonStyle()
     {
         var style = new Style(typeof(Button));
+        style.Setters.Add(new Setter(Control.FocusVisualStyleProperty, null)); // 统一去掉虚线焦点矩形
 
         var border = new FrameworkElementFactory(typeof(Border));
         border.Name = "BtnBorder";

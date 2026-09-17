@@ -327,7 +327,7 @@ internal sealed class MainWindow : Window
             Padding = new Thickness(9, 5, 9, 5),
             Background = Brushes.Transparent,
             Focusable = false, // 纯键盘模型：不进 Tab 链（筛选走 Alt+↓ 菜单导航 / Ctrl+Tab 循环），焦点永留输入框
-            ToolTip = Loc.S(lang, "筛选分类（Alt+↓ 展开 · Ctrl+Tab 循环）", "Filter (Alt+↓ open · Ctrl+Tab cycle)"),
+            ToolTip = Loc.S(lang, "筛选分类（Tab 展开 · Ctrl+Tab 循环）", "Filter (Tab to open · Ctrl+Tab to cycle)"),
             Cursor = Cursors.Hand,
             Margin = new Thickness(6, 0, 2, 0),
         };
@@ -397,7 +397,7 @@ internal sealed class MainWindow : Window
             _popupClosedAt = DateTime.UtcNow;
             if (_menuKbIndex >= 0)
             {
-                _menuItems[_menuKbIndex].Item.ClearValue(Control.BackgroundProperty); // 回到模板默认（透明）
+                SetMenuItemHighlight(_menuKbIndex, false); // 熄灭键盘高亮（overlay Opacity，不动 Background）
                 _menuKbIndex = -1;
             }
 
@@ -746,6 +746,7 @@ internal sealed class MainWindow : Window
         switch (key)
         {
             case Key.Down when Keyboard.Modifiers == ModifierKeys.Alt:
+            case Key.Tab: // Tab/Shift+Tab 在菜单开着时 = 收起（焦点遍历在本弹窗里不存在）
             case Key.Escape:
                 _filterPopup.IsOpen = false; // Closed 里复位高亮状态
                 e.Handled = true;
@@ -771,7 +772,8 @@ internal sealed class MainWindow : Window
         }
     }
 
-    /// <summary>菜单键盘高亮（环绕移动）：Background 呈现（ghost 模板 Grid TemplateBinding 透传，关闭时统一清）。</summary>
+    /// <summary>菜单键盘高亮（环绕移动）：驱动 ghost 模板里 HoverOverlay 的 Opacity——与鼠标 hover 完全同视觉。
+    /// 不要写 Background：恢复时 ClearValue 会把创建时的透明本地值一起清掉，露出 Aero2 默认按钮底。</summary>
     private void MoveMenuHighlight(int delta)
     {
         if (_menuItems.Count == 0)
@@ -779,24 +781,30 @@ internal sealed class MainWindow : Window
             return;
         }
 
-        if (_menuKbIndex >= 0)
-        {
-            _menuItems[_menuKbIndex].Item.ClearValue(Control.BackgroundProperty);
-        }
-
+        SetMenuItemHighlight(_menuKbIndex, false);
         _menuKbIndex = ((_menuKbIndex + delta) % _menuItems.Count + _menuItems.Count) % _menuItems.Count;
-        ApplyMenuKbHighlight();
+        SetMenuItemHighlight(_menuKbIndex, true);
     }
 
-    private void ApplyMenuKbHighlight()
+    private void ApplyMenuKbHighlight() => SetMenuItemHighlight(_menuKbIndex, true);
+
+    /// <summary>打开菜单时惰性解析各菜单项模板里的 HoverOverlay 引用（模板首次渲染后才存在）。</summary>
+    private void SetMenuItemHighlight(int index, bool on)
     {
-        if (_menuKbIndex >= 0)
+        if (index < 0 || index >= _menuItems.Count)
         {
-            _menuItems[_menuKbIndex].Item.Background = _theme.HoverItem;
+            return;
+        }
+
+        var item = _menuItems[index].Item;
+        item.ApplyTemplate();
+        if (item.Template?.FindName("HoverOverlay", item) is Border overlay)
+        {
+            overlay.Opacity = on ? 1 : 0;
         }
     }
 
-    /// <summary>Alt+↓：展开/收起筛选菜单（ComboBox 惯例）；展开时 Opened 事件把高亮初始化到当前筛选项。</summary>
+    /// <summary>Tab/Shift+Tab/Alt+↓：展开/收起筛选菜单；展开时 Opened 事件把高亮初始化到当前筛选项。</summary>
     private void ToggleFilterMenu()
     {
         if (_filterPopup.IsOpen)
@@ -854,6 +862,7 @@ internal sealed class MainWindow : Window
     private Style CreateGhostButtonStyle()
     {
         var style = new Style(typeof(ToggleButton));
+        style.Setters.Add(new Setter(Control.FocusVisualStyleProperty, null)); // 关掉默认虚线焦点矩形（自绘模板已有 hover/选中反馈）
         style.Setters.Add(new Setter(Control.ForegroundProperty, _theme.Meta));
 
         var overlay = new FrameworkElementFactory(typeof(Border));
@@ -922,6 +931,7 @@ internal sealed class MainWindow : Window
     private Style CreateItemContainerStyle()
     {
         var style = new Style(typeof(ListBoxItem));
+        style.Setters.Add(new Setter(Control.FocusVisualStyleProperty, null)); // 键盘导航已有选中覆盖层，虚线焦点矩形只添乱
         style.Setters.Add(new Setter(Control.MarginProperty, new Thickness(0, 0, 0, 2)));
         style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(12, 9, 12, 9)));
         style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch)); // 拉满才有 TextTrimming
@@ -1604,6 +1614,10 @@ internal sealed class MainWindow : Window
                 break;
             case Key.Tab when Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift):
                 CycleFilter(-1);
+                e.Handled = true;
+                break;
+            case Key.Tab: // Tab / Shift+Tab = 展开/收起筛选菜单（本弹窗不做焦点遍历：↑↓ 管列表、打字即回输入框）
+                ToggleFilterMenu();
                 e.Handled = true;
                 break;
         }
