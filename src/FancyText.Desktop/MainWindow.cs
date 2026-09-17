@@ -997,9 +997,19 @@ internal sealed class MainWindow : Window
             return;
         }
 
-        if (_settings.PrefillSelection && Helpers.SelectedTextReader.TryRead() is { Length: > 0 } selected)
+        string? prefill = null;
+        if (_settings.PrefillSelection)
         {
-            _inputBox.Text = selected; // 其它应用里有选中文字：优先预填（UIA 只读，不动剪贴板）
+            prefill = Helpers.SelectedTextReader.TryRead(out var prefillReason);
+            if (prefill is not { Length: > 0 } && prefillReason is not null)
+            {
+                LogDiag($"prefill: 未取到选中文字（{prefillReason}）"); // 预填失败必须留痕，不能静默
+            }
+        }
+
+        if (prefill is { Length: > 0 })
+        {
+            _inputBox.Text = prefill; // 其它应用里有选中文字：优先预填（UIA 只读，不动剪贴板）
         }
         else if (_settings.PrefillClipboard)
         {

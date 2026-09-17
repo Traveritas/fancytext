@@ -13,37 +13,73 @@ internal static class SelectedTextReader
 {
     private const int MaxLength = 4096;
 
-    /// <summary>后台线程读取 + 300ms 超时：拿不到（不支持 UIA/无选中/目标挂起）返回 null，调用方自行回退。</summary>
-    public static string? TryRead(TimeSpan? timeout = null)
+    /// <summary>后台线程读取 + 300ms 超时：拿不到（不支持 UIA/无选中/目标挂起）返回 null。
+    /// reason 输出失败原因（供诊断日志）：定位问题靠它而不是猜。</summary>
+    public static string? TryRead(out string? reason, TimeSpan? timeout = null)
     {
+        reason = null;
         try
         {
-            var task = System.Threading.Tasks.Task.Run(ReadFromForegroundWindow);
-            return task.Wait(timeout ?? TimeSpan.FromMilliseconds(300)) ? task.Result : null;
+            var localReason = string.Empty;
+            var task = System.Threading.Tasks.Task.Run(() => ReadFromForegroundWindow(ref localReason));
+            if (!task.Wait(timeout ?? TimeSpan.FromMilliseconds(300)))
+            {
+                reason = "超时（目标应用 UIA 无响应或树过大）";
+                return null;
+            }
+
+            reason = string.IsNullOrEmpty(localReason) ? null : localReason;
+            return task.Result;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return null; // AggregateException（UIA COM 错误等）一律视为拿不到
+            reason = $"异常 {ex.GetType().Name}"; // AggregateException（UIA COM 错误等）一律视为拿不到
+            return null;
         }
     }
 
-    private static string? ReadFromForegroundWindow()
+    private static string? ReadFromForegroundWindow(ref string reason)
     {
-        var hwnd = GetForegroundWindow();
-        if (hwnd == IntPtr.Zero)
+        // 快路径：焦点元素即文本框。浏览器/终端的 UIA 树巨大，全树 FindFirst 慢且可能超时——
+        // FocusedElement 是直达查询，也是地址栏/输入框场景的真正目标。
+        AutomationElement? element = null;
+        try
         {
-            return null;
+            if (AutomationElement.FocusedElement is { } focused &&
+                focused.TryGetCurrentPattern(TextPattern.Pattern, out var focusedPattern) &&
+                focusedPattern is TextPattern)
+            {
+                element = focused;
+            }
+        }
+        catch (Exception)
+        {
+            // 焦点元素跨进程探测失败：回落全树搜索
         }
 
-        // TextPattern 通常由文本编辑子元素实现（顶层窗口自身一般不支持），向下找第一个支持的元素
-        var root = AutomationElement.FromHandle(hwnd);
-        var element = root.TryGetCurrentPattern(TextPattern.Pattern, out var rootPattern) && rootPattern is TextPattern
-            ? root
-            : root.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.IsTextPatternAvailableProperty, true));
-        if (element is null
-            || !element.TryGetCurrentPattern(TextPattern.Pattern, out var pattern)
-            || pattern is not TextPattern text)
+        if (element is null)
         {
+            var hwnd = GetForegroundWindow();
+            if (hwnd == IntPtr.Zero)
+            {
+                reason = "前台窗口句柄为空";
+                return null;
+            }
+
+            var root = AutomationElement.FromHandle(hwnd);
+            element = root.TryGetCurrentPattern(TextPattern.Pattern, out var rootPattern) && rootPattern is TextPattern
+                ? root
+                : root.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.IsTextPatternAvailableProperty, true));
+            if (element is null)
+            {
+                reason = "目标不支持 UIA 文本接口";
+                return null;
+            }
+        }
+
+        if (!element.TryGetCurrentPattern(TextPattern.Pattern, out var pattern) || pattern is not TextPattern text)
+        {
+            reason = "目标不支持 UIA 文本接口";
             return null;
         }
 
@@ -67,6 +103,11 @@ internal static class SelectedTextReader
             {
                 best = rangeText; // 多段选区取最长的一段
             }
+        }
+
+        if (best is null)
+        {
+            reason = "无选中内容（或热键的 Alt 键让目标应用丢了选区）";
         }
 
         return best;
