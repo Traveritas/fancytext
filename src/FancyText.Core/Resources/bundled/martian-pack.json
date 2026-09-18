@@ -2,133 +2,13 @@
   "schemaVersion": 1,
   "name": "火星文",
   "author": "FancyText",
-  "description": "官方中文扩充包：以内置火星文映射表（cnchar，MIT）为字身的组合变体——星框、波浪、方括号、皇冠、点距、删除线、菊花与邪恶化，另含繁体混合与「还原解药」（火星文→简体），共 12 个纯数据样式（useMap / algorithm / wrapString / spacing / appendMark）。所用算法均为内置（简→繁 / 迷你邪恶），不引入新算法。",
+  "description": "官方中文扩充包：火星文「还原解药」——把火星文字还原成简体，附剥除组合装饰符的加强版，用于看懂别人的火星文昵称/签名。共 2 个纯数据样式（algorithm / useMap），映射表来自内置火星文字典（cnchar，MIT）。正向的「火星文+装饰」组合不再收录：先套内置火星文、再套任意装饰样式即可得到。",
   "styles": [
     {
-      "id": "mars-star",
-      "name": "火星文·星框 ★",
-      "nameEn": "Martian · Star Frame ★",
-      "category": "火星文",
-      "note": "组合管道：火星文（useMap martian）后加 ★ U+2605 五角星两侧押阵",
-      "noteEn": "Pipeline: martian map (useMap) then ★ U+2605 stars on both sides",
-      "steps": [
-        { "op": "useMap", "map": "martian" },
-        { "op": "wrapString", "prefix": "★ ", "suffix": " ★" }
-      ]
-    },
-    {
-      "id": "mars-wave",
-      "name": "火星文·波浪 ﹏",
-      "nameEn": "Martian · Wavy ﹏",
-      "category": "火星文",
-      "note": "组合管道：火星文后加 ﹏ U+FE4F 波浪低线，非主流签名经典款",
-      "noteEn": "Pipeline: martian map then ﹏ U+FE4F wavy low lines, the non-mainstream classic",
-      "steps": [
-        { "op": "useMap", "map": "martian" },
-        { "op": "wrapString", "prefix": "﹏", "suffix": "﹏" }
-      ]
-    },
-    {
-      "id": "mars-bracket",
-      "name": "火星文·方括号【】",
-      "nameEn": "Martian · Bracketed【】",
-      "category": "火星文",
-      "note": "组合管道：火星文后加【】U+3010/U+3011 黑头方括号",
-      "noteEn": "Pipeline: martian map then 【】U+3010/U+3011 black lenticular brackets",
-      "steps": [
-        { "op": "useMap", "map": "martian" },
-        { "op": "wrapString", "prefix": "【", "suffix": "】" }
-      ]
-    },
-    {
-      "id": "mars-flower",
-      "name": "火星文·花饰 ❀",
-      "nameEn": "Martian · Florette ❀",
-      "category": "火星文",
-      "note": "组合管道：火星文后加 ❀ U+2740 空心小花",
-      "noteEn": "Pipeline: martian map then ❀ U+2740 white florettes",
-      "steps": [
-        { "op": "useMap", "map": "martian" },
-        { "op": "wrapString", "prefix": "❀ ", "suffix": " ❀" }
-      ]
-    },
-    {
-      "id": "mars-wing",
-      "name": "火星文·皇冠 ꧁꧂",
-      "nameEn": "Martian · Royal ꧁꧂",
-      "category": "火星文",
-      "note": "组合管道：火星文后加 ꧁ U+A9C1 / ꧂ U+A9C2 爪哇文装饰括号（需 Win8.1+，手机端显示最佳）",
-      "noteEn": "Pipeline: martian map then ꧁ U+A9C1 / ꧂ U+A9C2 Javanese ornaments (Win8.1+; best on mobile)",
-      "steps": [
-        { "op": "useMap", "map": "martian" },
-        { "op": "wrapString", "prefix": "꧁", "suffix": "꧂" }
-      ]
-    },
-    {
-      "id": "mars-dots",
-      "name": "火星文·点距 ·",
-      "nameEn": "Martian · Dot Spacing ·",
-      "category": "火星文",
-      "note": "组合管道：火星文后字间插 · U+00B7 间隔号",
-      "noteEn": "Pipeline: martian map then · U+00B7 middle dots between characters",
-      "steps": [
-        { "op": "useMap", "map": "martian" },
-        { "op": "spacing", "separator": "·" }
-      ]
-    },
-    {
-      "id": "mars-slashed",
-      "name": "火星文·删除线",
-      "nameEn": "Martian · Strikethrough",
-      "category": "火星文",
-      "note": "组合管道：火星文后叠 U+0336 长删除线，个性签名宣言风",
-      "noteEn": "Pipeline: martian map then U+0336 long strikethrough per grapheme",
-      "steps": [
-        { "op": "useMap", "map": "martian" },
-        { "op": "appendMark", "mark": "\u0336" }
-      ]
-    },
-    {
-      "id": "mars-juhua",
-      "name": "火星文·菊花字",
-      "nameEn": "Martian · Chrysanthemum",
-      "category": "火星文",
-      "note": "组合管道：火星文后叠 U+0489 西里尔百万符，双厨狂喜（火星 × 菊花文）",
-      "noteEn": "Pipeline: martian map then U+0489 combining cyrillic millions — martian × chrysanthemum crossover",
-      "steps": [
-        { "op": "useMap", "map": "martian" },
-        { "op": "appendMark", "mark": "\u0489" }
-      ]
-    },
-    {
-      "id": "mars-evil",
-      "name": "火星文·邪恶化",
-      "nameEn": "Martian · Corrupted",
-      "category": "火星文",
-      "note": "组合管道：火星文后叠内置迷你邪恶（algorithm zalgo-mini），克苏鲁风轻量版",
-      "noteEn": "Pipeline: martian map then built-in zalgo-mini, a light Lovecraftian corruption",
-      "steps": [
-        { "op": "useMap", "map": "martian" },
-        { "op": "algorithm", "name": "zalgo-mini" }
-      ]
-    },
-    {
-      "id": "mars-trad",
-      "name": "火星文·繁体混合",
-      "nameEn": "Martian · Traditional Mix",
-      "category": "火星文",
-      "note": "组合管道：火星文后把剩余简体字转繁体（algorithm simplified-to-traditional），全员异形字",
-      "noteEn": "Pipeline: martian map then leftover simplified chars converted via simplified-to-traditional",
-      "steps": [
-        { "op": "useMap", "map": "martian" },
-        { "op": "algorithm", "name": "simplified-to-traditional" }
-      ]
-    },
-    {
       "id": "mars-reverse",
-      "name": "火星文·还原解药",
-      "nameEn": "Martian · Antidote",
-      "category": "火星文",
+      "name": "还原解药",
+      "nameEn": "Martian Antidote",
+      "category": "chinese",
       "note": "内置反向映射表（useMap martian-reverse）：把能对应回去的火星文字还原成简体，用来看懂别人的火星文",
       "noteEn": "Built-in reverse map (useMap martian-reverse): restores martian glyphs back to simplified Chinese",
       "steps": [
@@ -137,9 +17,9 @@
     },
     {
       "id": "mars-reverse-plain",
-      "name": "火星文·还原+去装饰",
-      "nameEn": "Martian · Antidote + Clean",
-      "category": "火星文",
+      "name": "还原并去装饰",
+      "nameEn": "Antidote + Clean",
+      "category": "chinese",
       "note": "组合管道：先剥掉组合装饰符（algorithm strip-combining-marks）再还原简体（useMap martian-reverse），对付花哨火星昵称",
       "noteEn": "Pipeline: strip combining marks (algorithm) then restore simplified (useMap martian-reverse), for decoding flashy martian names",
       "steps": [

@@ -739,11 +739,11 @@ public static class Program
         Check(bundledStyles["kao-words-happy"].Transform("爱笑") == "(｡♡‿♡｡)(´ω｀)", "情绪字映射");
         var martianPair = MartianDictionary.Map.First(kv => kv.Value.Length == 1 && kv.Value[0] != kv.Key);
         Check(bundledStyles["mars-reverse"].Transform(martianPair.Value) == martianPair.Key.ToString(), "火星文解药还原");
-        Check(bundledStyles["mars-star"].Transform(martianPair.Key.ToString()) == "★ " + martianPair.Value + " ★", "火星文星框");
+        Check(bundledStyles.TryGetValue("mars-star", out _) == false, "火星文组合样式已按用户反馈移除");
         Check(bundledStyles["kao-joy-smile"].Category == TextStyleCategory.Custom
             && bundledStyles["kao-joy-smile"].CustomCategoryName == "颜文字", "官方包自定义类别（颜文字）");
-        Check(bundledStyles["mars-star"].Category == TextStyleCategory.Custom
-            && bundledStyles["mars-star"].CustomCategoryName == "火星文", "官方包自定义类别（火星文）");
+        Check(bundledStyles["mars-reverse"].Category == TextStyleCategory.Chinese, "火星文解药归中文类");
+        Check(StyleFamilies.GetFamilyKey(bundledStyles["kao-joy-smile"]) is null, "自定义类别的包样式不聚族（平铺）");
 
         var tempDir = Path.Combine(Path.GetTempPath(), "fancytext-bundled-test-" + Path.GetRandomFileName());
         Directory.CreateDirectory(tempDir);

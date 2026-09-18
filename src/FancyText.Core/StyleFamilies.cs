@@ -5,7 +5,7 @@ namespace FancyText.Core;
 /// 收录规则：内置样式按 ID 首段（第一个 "-" 之前，无 "-" 取全名）归纳——规格指定的族全量进表，
 /// 即使当前成员不足 <see cref="MinMembersToGroup"/>（underline/overline/smoke/zalgo，归族但不折叠，
 /// 扩充到阈值后自动开始折叠）；其余首段须实测成员 ≥ 阈值才收录（enclose 5 / border 4 / bold 4 / sans 4，
-/// 由 StyleCatalog*.cs 的 Id 表统计得出）。包样式不按 ID 归类，一律按包聚族（键 = "pack:" + 包名）。
+/// 由 StyleCatalog*.cs 的 Id 表统计得出）。包样式不按 ID 归类，按包聚族（键 = "pack:" + 包名）；自定义类别的包样式例外——不聚族直接平铺（筛选分类已是它们的分组，族条目反而多一层钻取）。
 /// </summary>
 public static class StyleFamilies
 {
@@ -35,13 +35,14 @@ public static class StyleFamilies
     public static IReadOnlyCollection<string> KnownPrefixes { get; } = Table.Select(t => t.Key).ToArray();
 
     /// <summary>
-    /// 取样式的族键：包样式 → "pack:" + 包名；内置样式 → ID 首段命中聚族表返回该首段，否则 null（不参与折叠）。
+    /// 取样式的族键：包样式 → 自定义类别不聚族（筛选分类已是它们的分组，再叠包族要多钻一层），
+    /// 其余按 "pack:" + 包名；内置样式 → ID 首段命中聚族表返回该首段，否则 null（不参与折叠）。
     /// </summary>
     public static string? GetFamilyKey(TextStyle style)
     {
         if (style.Source is StyleSource.Pack { PackName: var packName })
         {
-            return PackPrefix + packName;
+            return style.Category == TextStyleCategory.Custom ? null : PackPrefix + packName;
         }
 
         var segment = FirstSegment(style.Id);

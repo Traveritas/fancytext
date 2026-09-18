@@ -1477,8 +1477,11 @@ internal sealed class MainWindow : Window
                 Name = style.GetName(Lang),
                 PreviewText = OneLine(preview),
                 IsPinned = _usage.IsPinned(style.Id),
+                // 副标题 = 类别（+包名）：类别与包名同名时只显示一个，避免「火星文 · 火星文」式重复
                 CategoryName = style.Source is StyleSource.Pack { PackName: var pack }
-                    ? $"{style.GetCategoryName(Lang)} · {pack}"
+                    ? (string.Equals(style.GetCategoryName(Lang), pack, StringComparison.Ordinal)
+                        ? style.GetCategoryName(Lang)
+                        : $"{style.GetCategoryName(Lang)} · {pack}")
                     : style.GetCategoryName(Lang),
                 FamilyKey = StyleFamilies.GetFamilyKey(style),
             });
