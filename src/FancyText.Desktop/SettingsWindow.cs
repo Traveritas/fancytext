@@ -44,6 +44,10 @@ internal sealed class SettingsWindow : Window
     private TextBlock _packStatus = new();
     private StackPanel _packsList = new();
     private readonly HashSet<string> _expandedPacks = new(StringComparer.OrdinalIgnoreCase); // 面板重填后保留行展开态（按包名）
+    private StackPanel _onlineList = new();
+    private TextBlock _onlineStatus = new();
+    private IReadOnlyList<FancyText.Core.RegistryPackEntry>? _onlineEntries; // 最近一次拉到的索引（null=未拉取）
+    private bool _onlineBusy; // 获取/下载期间禁止并发操作
 
     public SettingsWindow(MainWindow main)
     {
@@ -809,6 +813,17 @@ internal sealed class SettingsWindow : Window
         StyleButton(exportBtn);
         exportBtn.Click += (_, _) => OnExportPinnedPack();
 
+        var fetchBtn = new Button
+        {
+            Content = Loc.S(_lang, "获取更多样式包…", "Get more packs…"),
+            FontSize = 12,
+            Padding = new Thickness(10, 3, 10, 3),
+            Margin = new Thickness(8, 0, 0, 0),
+            Cursor = Cursors.Hand,
+        };
+        StyleButton(fetchBtn);
+        fetchBtn.Click += (_, _) => OnFetchOnlinePacks();
+
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
 
         _packStatus = new TextBlock
@@ -824,13 +839,193 @@ internal sealed class SettingsWindow : Window
         _packsList = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
         FillPacksPanel();
 
+        _onlineStatus = new TextBlock
+        {
+            Text = "",
+            FontSize = 10.5,
+            Foreground = _theme.Meta,
+            Margin = new Thickness(0, 4, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+        };
+        _onlineList.Visibility = Visibility.Collapsed;
+        _onlineStatus.Visibility = Visibility.Collapsed;
+        var onlineSection = new StackPanel();
+        onlineSection.Children.Add(MakePackGroupHeader(Loc.S(_lang, "在线获取（GitHub 索引）", "Online (GitHub index)")));
+        onlineSection.Children.Add(_onlineList);
+        onlineSection.Children.Add(_onlineStatus);
+
         var panel = new StackPanel();
         buttons.Children.Add(importBtn);
         buttons.Children.Add(exportBtn);
+        buttons.Children.Add(fetchBtn);
         panel.Children.Add(buttons);
         panel.Children.Add(_packStatus);
         panel.Children.Add(_packsList);
+        panel.Children.Add(onlineSection);
         return panel;
+    }
+
+    /// <summary>拉取在线样式包索引：主通道 raw.githubusercontent.com，失败回退 jsDelivr 镜像；结果渲染进可折叠的在线区。</summary>
+    private async void OnFetchOnlinePacks()
+    {
+        if (_onlineBusy)
+        {
+            return;
+        }
+
+        _onlineBusy = true;
+        _onlineList.Visibility = Visibility.Visible;
+        _onlineStatus.Visibility = Visibility.Visible;
+        _onlineStatus.Foreground = _theme.Meta;
+        _onlineStatus.Text = Loc.S(_lang, "正在获取在线索引…", "Fetching online index…");
+        try
+        {
+            var result = await FancyText.Core.StyleRegistry.FetchIndexAsync();
+            if (result.Value is null)
+            {
+                _onlineStatus.Foreground = Brushes.OrangeRed;
+                _onlineStatus.Text = Loc.S(_lang, "获取失败，稍后再试：", "Fetch failed, retry later: ") + result.Error;
+                return;
+            }
+
+            _onlineEntries = result.Value;
+            FillOnlineList();
+            _onlineStatus.Text = result.Value.Count == 0
+                ? Loc.S(_lang, "索引为空", "Index is empty")
+                : "";
+        }
+        catch (Exception ex)
+        {
+            _onlineStatus.Foreground = Brushes.OrangeRed;
+            _onlineStatus.Text = ex.Message; // 兜底：网络层异常不该白屏
+        }
+        finally
+        {
+            _onlineBusy = false;
+        }
+    }
+
+    /// <summary>渲染在线索引列表：已安装的同名包标「已安装」，其余给 [安装]（下载 → 校验导入 → 落盘）。</summary>
+    private void FillOnlineList()
+    {
+        _onlineList.Children.Clear();
+        if (_onlineEntries is null)
+        {
+            return;
+        }
+
+        HashSet<string> installedNames;
+        try
+        {
+            installedNames = FancyText.Core.StylePacks.LoadInstalled()
+                .Where(p => p.Error is null)
+                .Select(p => p.PackName)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception)
+        {
+            installedNames = [];
+        }
+
+        foreach (var entry in _onlineEntries)
+        {
+            var name = new TextBlock
+            {
+                Text = entry.PackName + (entry.Official ? Loc.S(_lang, " · 官方", " · official") : ""),
+                FontSize = 12,
+                Foreground = _theme.Text,
+            };
+            var desc = new TextBlock
+            {
+                Text = entry.Description,
+                FontSize = 10.5,
+                Foreground = _theme.Meta,
+                TextWrapping = TextWrapping.Wrap,
+            };
+            var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            info.Children.Add(name);
+            info.Children.Add(desc);
+
+            var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            if (installedNames.Contains(entry.PackName))
+            {
+                right.Children.Add(new TextBlock
+                {
+                    Text = Loc.S(_lang, "已安装 ✓", "Installed ✓"),
+                    FontSize = 11,
+                    Foreground = _theme.Meta,
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+            }
+            else
+            {
+                var installBtn = new Button
+                {
+                    Content = Loc.S(_lang, "安装", "Install"),
+                    FontSize = 11.5,
+                    Padding = new Thickness(10, 2, 10, 2),
+                    Cursor = Cursors.Hand,
+                    Tag = entry,
+                };
+                StyleButton(installBtn);
+                installBtn.Click += (_, _) => OnInstallOnlinePack(entry, installBtn);
+                right.Children.Add(installBtn);
+            }
+
+            var row = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+            DockPanel.SetDock(right, Dock.Right);
+            row.Children.Add(right);
+            row.Children.Add(info);
+            _onlineList.Children.Add(row);
+        }
+    }
+
+    /// <summary>下载并导入一个在线包：下载原文 → 与本地导入同一套校验管线 → 落盘 → 联动刷新。</summary>
+    private async void OnInstallOnlinePack(FancyText.Core.RegistryPackEntry entry, Button button)
+    {
+        if (_onlineBusy)
+        {
+            return;
+        }
+
+        _onlineBusy = true;
+        button.IsEnabled = false;
+        _onlineStatus.Foreground = _theme.Meta;
+        _onlineStatus.Text = Loc.S(_lang, $"正在下载「{entry.PackName}」…", $"Downloading \"{entry.PackName}\"…");
+        try
+        {
+            var download = await FancyText.Core.StyleRegistry.DownloadPackAsync(entry);
+            if (download.Value is null)
+            {
+                _onlineStatus.Foreground = Brushes.OrangeRed;
+                _onlineStatus.Text = Loc.S(_lang, "下载失败：", "Download failed: ") + download.Error;
+                button.IsEnabled = true;
+                return;
+            }
+
+            var import = FancyText.Core.StylePacks.ImportJson(download.Value, $"在线:{entry.Id}");
+            if (!import.Success)
+            {
+                _onlineStatus.Foreground = Brushes.OrangeRed;
+                _onlineStatus.Text = string.Join("; ", import.Errors);
+                button.IsEnabled = true;
+                return;
+            }
+
+            ApplyPacksChanged(Loc.S(_lang, $"已安装「{entry.PackName}」", $"Installed \"{entry.PackName}\""));
+            _onlineStatus.Text = "";
+            FillOnlineList(); // 该行换成「已安装 ✓」
+        }
+        catch (Exception ex)
+        {
+            _onlineStatus.Foreground = Brushes.OrangeRed;
+            _onlineStatus.Text = ex.Message;
+            button.IsEnabled = true;
+        }
+        finally
+        {
+            _onlineBusy = false;
+        }
     }
 
     /// <summary>重填两组包列表：官方包（exe 内嵌）+ 用户导入包。数据依赖的结构全在这里重建，行展开态按包名跨重填保留。</summary>

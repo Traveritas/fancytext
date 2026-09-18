@@ -16,6 +16,8 @@ namespace FancyText.Cli;
 ///   fancy --demo              同 <文本>，别名
 ///   fancy --import <包.json>  导入样式包（含内置样式 + 已装包的合并目录）
 ///   fancy --packs             列出已安装的样式包（含停用标记）
+///   fancy --online            列出在线索引（fancytext-styles 仓库）
+///   fancy --online-install <id|包名>  从在线索引下载并安装
 ///   fancy --export <ID...> [--out <包.json>]  把若干样式（如收藏）导出为可分享的包
 /// </summary>
 public static class Program
@@ -43,6 +45,18 @@ public static class Program
 
                 case "--packs":
                     return ListPacks();
+
+                case "--online":
+                    return ListOnlinePacks().GetAwaiter().GetResult();
+
+                case "--online-install":
+                    if (i + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine(Loc.S(Lang, "--online-install 需要索引 id 或包名（用 --online 查看）", "--online-install requires an index id or pack name (see --online)"));
+                        return 2;
+                    }
+
+                    return InstallOnlinePack(args[++i]).GetAwaiter().GetResult();
 
                 case "--remove":
                     if (i + 1 >= args.Length)
@@ -257,6 +271,66 @@ public static class Program
         }
 
         Console.WriteLine(Loc.S(Lang, $"已卸载 {packName} ✓", $"Removed {packName} ✓"));
+        return 0;
+    }
+
+    private static async Task<int> ListOnlinePacks()
+    {
+        var result = await StyleRegistry.FetchIndexAsync();
+        if (result.Value is null)
+        {
+            Console.Error.WriteLine(result.Error);
+            return 1;
+        }
+
+        var installed = StylePacks.LoadInstalled().Where(p => p.Error is null)
+            .Select(p => p.PackName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in result.Value)
+        {
+            var mark = installed.Contains(entry.PackName) ? " ✓" : "";
+            Console.WriteLine($"{entry.Id,-16} {entry.PackName}{mark}{(entry.Official ? Loc.S(Lang, "  [官方]", "  [official]") : "")}");
+            if (!string.IsNullOrEmpty(entry.Description))
+            {
+                Console.WriteLine($"{"",-16} {entry.Description}");
+            }
+        }
+
+        return 0;
+    }
+
+    private static async Task<int> InstallOnlinePack(string idOrName)
+    {
+        var index = await StyleRegistry.FetchIndexAsync();
+        if (index.Value is null)
+        {
+            Console.Error.WriteLine(index.Error);
+            return 1;
+        }
+
+        var entry = index.Value.FirstOrDefault(e =>
+            string.Equals(e.Id, idOrName, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(e.PackName, idOrName, StringComparison.OrdinalIgnoreCase));
+        if (entry is null)
+        {
+            Console.Error.WriteLine(Loc.S(Lang, $"索引里没有：{idOrName}（用 --online 查看）", $"Not in index: {idOrName} (see --online)"));
+            return 1;
+        }
+
+        var download = await StyleRegistry.DownloadPackAsync(entry);
+        if (download.Value is null)
+        {
+            Console.Error.WriteLine(download.Error);
+            return 1;
+        }
+
+        var import = StylePacks.ImportJson(download.Value, $"在线:{entry.Id}");
+        if (!import.Success)
+        {
+            Console.Error.WriteLine(string.Join("; ", import.Errors));
+            return 1;
+        }
+
+        Console.WriteLine(Loc.S(Lang, $"已安装「{entry.PackName}」→ {import.InstalledPath}", $"Installed \"{entry.PackName}\" -> {import.InstalledPath}"));
         return 0;
     }
 

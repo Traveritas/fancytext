@@ -388,6 +388,7 @@ public static class StylePacks
         }
 
         var pack = parsed.Pack;
+        MigrateOfficialPackRename(pack);
         var conflicts = FindConflicts(pack);
         if (conflicts.Count > 0)
         {
@@ -398,8 +399,41 @@ public static class StylePacks
         return Install(pack, filePath);
     }
 
-    /// <summary>覆盖安装（同包名 = 升级），冲突只查内置与其他包。</summary>
-    private static ImportResult Install(StylePack pack, string? sourcePath)
+    /// <summary>导入在线/内存中的包 JSON：与文件导入同一套校验，原文落盘（保真分享）。</summary>
+    public static ImportResult ImportJson(string json, string sourceName = "在线包")
+    {
+        var parsed = ParseJson(json, sourceName);
+        if (parsed.Pack is null)
+        {
+            return new ImportResult(false, null, parsed.Errors);
+        }
+
+        var pack = parsed.Pack;
+        MigrateOfficialPackRename(pack);
+        var conflicts = FindConflicts(pack);
+        if (conflicts.Count > 0)
+        {
+            return new ImportResult(false, null,
+                [$"样式 ID 与内置或其他包冲突（请先卸载对方包再安装）：{string.Join("、", conflicts)}"]);
+        }
+
+        return Install(pack, null, rawJson: json);
+    }
+
+    /// <summary>官方包改名迁移：删掉旧名安装文件（ID 相同，留着会让新名包被冲突拦截）。须在 <see cref="FindConflicts"/> 之前调用。</summary>
+    private static void MigrateOfficialPackRename(StylePack pack)
+    {
+        foreach (var (oldName, newName) in OfficialPackRenames)
+        {
+            if (string.Equals(newName, pack.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                _ = Remove(oldName);
+            }
+        }
+    }
+
+    /// <summary>落盘（同包名 = 升级），冲突只查内置与其他包（迁移已在各入口的冲突检查前完成）。</summary>
+    private static ImportResult Install(StylePack pack, string? sourcePath, string? rawJson = null)
     {
         try
         {
@@ -417,7 +451,7 @@ public static class StylePacks
             }
             else
             {
-                File.WriteAllText(target, Serialize(pack));
+                File.WriteAllText(target, rawJson ?? Serialize(pack));
             }
 
             return new ImportResult(true, target, []);
@@ -633,16 +667,7 @@ public static class StylePacks
         }
 
         var pack = parsed.Pack;
-
-        // 官方包改名迁移：删掉旧名安装文件（ID 相同，留着会让新名包被冲突拦截）
-        foreach (var (oldName, newName) in OfficialPackRenames)
-        {
-            if (string.Equals(newName, pack.Name, StringComparison.OrdinalIgnoreCase))
-            {
-                _ = Remove(oldName);
-            }
-        }
-
+        MigrateOfficialPackRename(pack);
         var conflicts = FindConflicts(pack);
         if (conflicts.Count > 0)
         {
@@ -650,17 +675,8 @@ public static class StylePacks
                 [$"样式 ID 与内置或其他包冲突（请先卸载对方包再安装）：{string.Join("、", conflicts)}"]);
         }
 
-        try
-        {
-            Directory.CreateDirectory(ActiveDirectory);
-            var target = Path.Combine(ActiveDirectory, ToPackFileName(pack.Name));
-            File.WriteAllText(target, bundled.Json);
-            return new ImportResult(true, target, []);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return new ImportResult(false, null, [$"写入失败：{ex.Message}"]);
-        }
+        // 资源原文落盘（与导入同一管线）
+        return Install(pack, null, rawJson: bundled.Json);
     }
 
     // ---------- 导出 ----------

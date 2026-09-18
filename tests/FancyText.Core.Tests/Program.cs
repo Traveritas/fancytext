@@ -629,6 +629,45 @@ public static class Program
             {
             }
         }
+
+        // 在线索引解析：字段容错（缺必要字段/非 HTTPS 直链跳过，不拖累整表）+ 格式拒绝
+        var indexJson = """{"schemaVersion":1,"packs":[{"id":"p1","packName":"包一","description":"d","author":"a","official":true,"downloadUrl":"https://raw.githubusercontent.com/x/y/main/packs/p1.json","mirrorUrl":"https://cdn.jsdelivr.net/gh/x/y@main/packs/p1.json"},{"id":"p2","packName":"包二","downloadUrl":"https://example.com/p2.json"},{"id":"bad","packName":"包三","downloadUrl":"http://insecure.com/p.json"},{"packName":"缺 id"}]}""";
+        var indexError = StyleRegistry.ParseIndex(indexJson, out var indexPacks);
+        Check(indexError is null && indexPacks!.Count == 2, "在线索引解析（http/缺字段条目跳过）", indexError ?? "");
+        Check(indexPacks![0].PackName == "包一" && indexPacks[0].Official && indexPacks[0].MirrorUrl is not null
+            && indexPacks[1].PackName == "包二" && !indexPacks[1].Official && indexPacks[1].MirrorUrl is null, "索引条目字段");
+        Check(StyleRegistry.ParseIndex("{ 不是 JSON", out _) is not null, "索引坏 JSON 被拒");
+        Check(StyleRegistry.ParseIndex("""{"schemaVersion":1,"packs":[]}""", out var emptyPacks) is null && emptyPacks!.Count == 0, "空索引合法");
+        Check(StyleRegistry.ParseIndex("""{"schemaVersion":2,"packs":[]}""", out _) is not null, "索引 schemaVersion 不符被拒");
+        Check(StyleRegistry.ParseIndex("""{"schemaVersion":1}""", out _) is not null, "索引缺 packs 被拒");
+
+        // 在线导入（ImportJson）：同一套校验管线，原文落盘保真
+        var onlineDir = Path.Combine(Path.GetTempPath(), "fancytext-online-test-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(onlineDir);
+        StylePacks.DirectoryOverrideForTests = onlineDir;
+        try
+        {
+            var goodOnline = """{"schemaVersion":1,"name":"在线包","styles":[{"id":"ol-1","name":"一","category":"decoration","steps":[{"op":"wrapString","prefix":"✦","suffix":"✦"}]}]}""";
+            var imported = StylePacks.ImportJson(goodOnline, "在线:ol");
+            Check(imported.Success && File.ReadAllText(imported.InstalledPath!) == goodOnline, "在线包导入并原文落盘", string.Join("; ", imported.Errors));
+
+            var badOnline = """{"schemaVersion":1,"name":"坏在线包","styles":[{"id":"ol-2","name":"二","category":"decoration","steps":[{"op":"explode"}]}]}""";
+            Check(!StylePacks.ImportJson(badOnline, "在线:bad").Success, "在线坏包被校验拦截");
+
+            var conflictOnline = """{"schemaVersion":1,"name":"冲突在线包","styles":[{"id":"bold","name":"冒充","category":"latin-fancy","steps":[{"op":"reverse"}]}]}""";
+            Check(!StylePacks.ImportJson(conflictOnline, "在线:conflict").Success, "在线包与内置 ID 冲突被拦截");
+        }
+        finally
+        {
+            StylePacks.DirectoryOverrideForTests = prevPackDir;
+            try
+            {
+                Directory.Delete(onlineDir, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
     }
 
     /// <summary>包停用：UsageState 存取/宽容读取/Changed；合并目录过滤停用包、启用后恢复；已安装列表保持完整。</summary>
