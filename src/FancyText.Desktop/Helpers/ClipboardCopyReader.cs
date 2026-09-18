@@ -102,6 +102,10 @@ internal static class ClipboardCopyReader
                 if (Clipboard.ContainsText())
                 {
                     text = Clipboard.GetText();
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        reason = "目标复制出的是空文本";
+                    }
                 }
                 else
                 {
