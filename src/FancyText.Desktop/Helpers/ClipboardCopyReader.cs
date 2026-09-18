@@ -14,7 +14,10 @@ namespace FancyText.Desktop.Helpers;
 internal static class ClipboardCopyReader
 {
     private const int MaxLength = 4096;
-    private const int WaitMs = 600; // 等目标复制出的墙钟上限（计时器分辨率不再放大它）
+    private const int WaitMs = 600;      // 等目标复制出的墙钟上限（计时器分辨率不再放大它）
+    private const int EarlyBailMs = 200; // 无复制迹象的提前放弃线：泵消息修好后实测健康复制 ~31ms 内落地，
+                                         // 到此线序列号仍未动，几乎必是"无选区/目标不认这个快捷键"——
+                                         // 等满 600ms 只会把"没选中想直接打字"的唤出白白拖慢
 
     /// <summary>尝试经模拟复制取得选中文字；reason 输出失败原因（供诊断日志）。</summary>
     public static string? TryRead(out string reason)
@@ -80,6 +83,11 @@ internal static class ClipboardCopyReader
             {
                 copied = true;
                 break;
+            }
+
+            if (wait.ElapsedMilliseconds >= EarlyBailMs)
+            {
+                break; // 提前放弃：见 EarlyBailMs 注释（下方宽限轮仍会接住"卡在握手中的迟到复制"）
             }
 
             Thread.Sleep(15);

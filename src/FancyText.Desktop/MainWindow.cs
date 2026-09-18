@@ -58,7 +58,11 @@ internal sealed class MainWindow : Window
     private readonly DispatcherTimer _debounce;
     private readonly DispatcherTimer _trimTimer;
     private readonly DispatcherTimer _copyTimer; // 复制反馈：1.2s 后状态栏恢复计数文本
+    private readonly DispatcherTimer _accentDebounce; // 系统强调色消息防抖（高频连发，汇聚后颜色真变了才重建）
     private HotkeyBinding _hotkey;
+
+    private int _showSeq; // 唤出序号：异步预填结果只作用于最新一次唤出
+    private (byte R, byte G, byte B)? _appliedSystemAccent; // 跟随系统模式下已应用的颜色（强调色消息去重）
 
     // 可被 BuildUi 整体重建（主题切换时全量换新实例，避免逐控件回填笔刷）
     private DockPanel _card = new();
@@ -107,6 +111,7 @@ internal sealed class MainWindow : Window
         _settings = DesktopSettings.Load();
         _hotkey = DesktopSettings.ParseHotkey(_settings.Hotkey) ?? HotkeyBinding.Default;
         _theme = ResolveTheme(_settings);
+        _appliedSystemAccent = Helpers.SystemAccent.TryGet(); // 强调色消息去重基线
         UiAnimation.UserPreference = !_settings.ReduceMotion; // 「减少动效」即时生效（BuildUi/模板动画建样式时求值）
 
         _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(DebounceMs) };
@@ -118,6 +123,11 @@ internal sealed class MainWindow : Window
 
         _copyTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
         _copyTimer.Tick += (_, _) => { _copyTimer.Stop(); _statusCount.Text = _lastCountText; };
+
+        // 取色器拖动会高频连发 WM_DWMCOLORIZATIONCOLORCHANGED：250ms 汇聚一次，
+        // 且颜色真变了才整体重建（BuildUi 是全量操作，不能每条消息来一次）
+        _accentDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _accentDebounce.Tick += (_, _) => { _accentDebounce.Stop(); ApplySettingsIfAccentChanged(); };
 
         Title = Loc.S(Lang, "花式文字", "Fancy Text");
         Width = 540;
@@ -625,6 +635,7 @@ internal sealed class MainWindow : Window
     {
         _settings = settings;
         _theme = ResolveTheme(settings);
+        _appliedSystemAccent = Helpers.SystemAccent.TryGet(); // 强调色消息去重基线随主题重建刷新
         UiAnimation.UserPreference = !_settings.ReduceMotion; // 与构造器同步：BuildUi 重建前更新总闸
         ApplyThemeToWindow();
         var input = _inputBox.Text;
@@ -643,6 +654,24 @@ internal sealed class MainWindow : Window
             _inputBox.Focus();
             _inputBox.CaretIndex = _inputBox.Text.Length;
         }
+    }
+
+    /// <summary>强调色跟随系统：当前系统色与已应用色不同才整体重建（BuildUi 是全量重建，
+    /// 取色器拖动时消息高频连发，凭这条守卫把重建次数压到颜色真正变化时）。</summary>
+    private void ApplySettingsIfAccentChanged()
+    {
+        if (_closed || !string.Equals(_settings.Accent, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var current = Helpers.SystemAccent.TryGet();
+        if (current is null || current == _appliedSystemAccent)
+        {
+            return;
+        }
+
+        ApplySettings(_settings);
     }
 
     private void OnHeaderDrag(object sender, MouseButtonEventArgs e)
@@ -1029,23 +1058,25 @@ internal sealed class MainWindow : Window
             return;
         }
 
+        var seq = ++_showSeq; // 唤出序号：异步预填结果只作用于最新一次唤出
         string? prefill = null;
-        if (_settings.PrefillSelection)
+        if (_settings.PrefillSelection && _settings.PrefillSelectionPlus)
         {
-            prefill = Helpers.SelectedTextReader.TryRead(out var prefillReason);
-            if (prefill is not { Length: > 0 } && prefillReason is not null)
+            // 「预填兼容模式」：模拟复制要求此刻目标仍持前台，链路保持在唤出前同步执行，但收紧——
+            // UIA 等待缩到 150ms（慢过它的目标交给模拟复制更可靠）；UIA 权威判定"无选中"时直接跳过
+            // 模拟复制（同一个结论不必再白烧一轮等待，"没选中想直接打字"不再慢）
+            prefill = Helpers.SelectedTextReader.TryRead(out var prefillReason, out var uiaOutcome, TimeSpan.FromMilliseconds(150));
+            if (prefill is not { Length: > 0 } && uiaOutcome != Helpers.SelectedTextReader.ReadOutcome.NoSelection)
+            {
+                prefill = Helpers.ClipboardCopyReader.TryRead(out var copyReason);
+                LogDiag(prefill is { Length: > 0 }
+                    ? "prefill: 经模拟复制（Ctrl+Insert）取得选中文字"
+                    : $"prefill: 模拟复制也未取到（{copyReason}）");
+            }
+            else if (prefill is not { Length: > 0 } && prefillReason is not null)
             {
                 LogDiag($"prefill: UIA 未取到（{prefillReason}）");
             }
-        }
-
-        if (prefill is not { Length: > 0 } && _settings.PrefillSelection && _settings.PrefillSelectionPlus)
-        {
-            // 「预填兼容模式」兜底：模拟 Ctrl+Insert 复制（UIA 不支持的应用的普适路径），读出即还原剪贴板
-            prefill = Helpers.ClipboardCopyReader.TryRead(out var copyReason);
-            LogDiag(prefill is { Length: > 0 }
-                ? "prefill: 经模拟复制（Ctrl+Insert）取得选中文字"
-                : $"prefill: 模拟复制也未取到（{copyReason}）");
         }
 
         if (prefill is { Length: > 0 })
@@ -1059,6 +1090,34 @@ internal sealed class MainWindow : Window
         else if (string.IsNullOrEmpty(_inputBox.Text))
         {
             _inputBox.Text = StyleCatalog.DefaultSample; // 保留上次输入；首次打开给示例
+        }
+
+        var seededInput = _inputBox.Text; // 种入基线：异步回填仅在输入仍是它时替换（用户动过就不打断）
+        if (_settings.PrefillSelection && !_settings.PrefillSelectionPlus)
+        {
+            // 常规路径异步化：UIA 跨进程查询（快则几十 ms、慢则 300ms 超时）不再阻塞弹窗出现。
+            // 结果回来时窗口已隐藏/已再次唤出/用户已编辑则丢弃；选中文字的优先级仍高于剪贴板种子。
+            Helpers.SelectedTextReader.TryReadAsync(TimeSpan.FromMilliseconds(300), (text, reason, _) =>
+            {
+                if (text is not { Length: > 0 })
+                {
+                    if (reason is not null)
+                    {
+                        LogDiag($"prefill: UIA 异步未取到（{reason}）");
+                    }
+                    return;
+                }
+
+                if (_closed || seq != _showSeq || !IsVisible || _inputBox.Text != seededInput)
+                {
+                    return;
+                }
+
+                _inputBox.Text = text;
+                _debounce.Stop(); // 种入文本已触发防抖，改同步重建
+                RebuildList();
+                _inputBox.SelectAll(); // 与打开时的"整段替换"手势保持一致
+            });
         }
 
         _debounce.Stop(); // 种入文本已触发过 TextChanged，直接同步重建
@@ -2021,20 +2080,7 @@ internal sealed class MainWindow : Window
         LogDiag($"hotkey: 注册 {(_hotkeyRegistered ? "成功" : "失败")} combo={_hotkey.Display} err={Marshal.GetLastWin32Error()}");
     }
 
-    private static void LogDiag(string line)
-    {
-        try
-        {
-            var path = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FancyText", "diag.log");
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.AppendAllText(path, $"{DateTime.Now:HH:mm:ss.fff} desktop {line}{Environment.NewLine}");
-        }
-        catch (Exception)
-        {
-            // 诊断日志失败不影响功能
-        }
-    }
+    private static void LogDiag(string line) => App.LogDiag(line);
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
@@ -2045,8 +2091,9 @@ internal sealed class MainWindow : Window
         }
         else if (msg == WM_DWMCOLORIZATIONCOLORCHANGED && string.Equals(_settings.Accent, "auto", StringComparison.OrdinalIgnoreCase))
         {
-            // 系统强调色变化（含"从壁纸自动取色"刷新）：跟随系统模式下即时换肤
-            ApplySettings(_settings);
+            // 系统强调色变化（取色器拖动/切换预设/壁纸自动取色刷新）：防抖汇聚后颜色真变了才重建
+            _accentDebounce.Stop();
+            _accentDebounce.Start();
         }
         else if (msg == WM_SETTINGCHANGE && string.Equals(_settings.Theme, "system", StringComparison.OrdinalIgnoreCase))
         {

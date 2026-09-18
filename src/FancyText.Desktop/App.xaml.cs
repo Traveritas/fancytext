@@ -34,7 +34,7 @@ public partial class App : Application, IDisposable
         // 但必须留下证据（写诊断日志），否则启动路径上的异常会让进程变成"无窗口无托盘"的空壳且无从排查。
         DispatcherUnhandledException += (_, args) =>
         {
-            LogDiag($"未处理异常: {args.Exception}");
+            LogDiag($"未处理异常: {args.Exception}", always: true); // 兜底证据不受日志开关影响
             args.Handled = true;
         };
         LogDiag("startup: OnStartup 开始");
@@ -116,8 +116,19 @@ public partial class App : Application, IDisposable
         base.OnExit(e);
     }
 
-    internal static void LogDiag(string line)
+    /// <summary>诊断日志开关：默认关闭（每热键同步写盘拖慢唤出且无限增长），设环境变量 FANCYTEXT_DIAG=1 开启。</summary>
+    internal static readonly bool DiagEnabled =
+        Environment.GetEnvironmentVariable("FANCYTEXT_DIAG") is "1" or "true";
+
+    /// <summary>诊断日志（%LOCALAPPDATA%\FancyText\diag.log）。默认关闭，always=true 无条件写
+    /// （未处理异常等兜底证据必须落盘，不受开关影响）。</summary>
+    internal static void LogDiag(string line, bool always = false)
     {
+        if (!always && !DiagEnabled)
+        {
+            return;
+        }
+
         try
         {
             var path = Path.Combine(
