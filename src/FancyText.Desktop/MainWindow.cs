@@ -99,6 +99,7 @@ internal sealed class MainWindow : Window
     private bool _activatedSinceShown; // 防 Show 后未及激活就被 Deactivated"闪没"
     private bool _micaActive;          // Mica 材质生效中（窗口底透明，透出 DWM 系统材质）
     private bool _hiding;              // 退出动画播放中（播完才真正 Hide；期间唤出则取消）
+    private bool _showingPopup;        // 唤出流程执行中（预填等待会泵消息，排队的第二次热键不得重入）
 
     public MainWindow(UsageState usage)
     {
@@ -1000,11 +1001,24 @@ internal sealed class MainWindow : Window
     /// <summary>唤出弹窗：按设置预填 → 重建列表 → 定位（鼠标附近/主屏）。热键/托盘/二次启动共用入口。</summary>
     public void ShowPopup()
     {
-        if (_closed)
+        if (_closed || _showingPopup)
         {
-            return; // 应用退出中
+            return; // 退出中；或本次唤出还在预填（兼容模式等待会泵消息，排队的第二次热键直接吞掉）
         }
 
+        _showingPopup = true;
+        try
+        {
+            ShowPopupCore();
+        }
+        finally
+        {
+            _showingPopup = false;
+        }
+    }
+
+    private void ShowPopupCore()
+    {
         _trimTimer.Stop(); // 取消待执行的修剪：唤出路径需要全部页面驻留
         CancelHideAnimation(); // 退出动画播到一半被唤出：恢复完整可见，按"已显示"继续
 
