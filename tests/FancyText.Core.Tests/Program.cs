@@ -733,10 +733,19 @@ public static class Program
 
         // 新包转换抽查（编译产物即面板所用管线）
         var bundledStyles = coreBundled.SelectMany(p => p.Styles).ToDictionary(s => s.Id);
-        Check(bundledStyles["starry-glow"].Transform("夜") == "✧･ﾟ夜ﾟ･✧", "星月夜·光晕包裹");
+        Check(bundledStyles["starry-stardust"].Transform("夜") == "⋆｡ﾟ夜ﾟ｡⋆", "星月夜·星屑流包裹");
         Check(bundledStyles["kao-joy-smile"].Transform("你好") == "你好 (´ω｀)", "颜文字后缀");
-        Check(bundledStyles["mark-sweat"].Transform("好") == "好\u0307\u0323", "热汗字上下加点");
+        Check(bundledStyles["mark-tiny-a"].Transform("a") == "a\u0363", "头顶小字母 a");
         Check(bundledStyles["kao-words-happy"].Transform("爱笑") == "(｡♡‿♡｡)(´ω｀)", "情绪字映射");
+        // 按用户标准移除的重复样式不得回归：与内置同款（✦☾/✧･ﾟ/逐字星/双星点）、可两步组合（组合管道/力度档/删+划）
+        foreach (var removed in new[]
+                 {
+                     "starry-day-night", "starry-glow", "starry-each-star", "starry-mark-double-dot", "starry-night-combo",
+                     "mark-sweat", "mark-juhua-double", "mark-juhua-triple", "mark-strike-under",
+                 })
+        {
+            Check(!bundledStyles.ContainsKey(removed), $"重复样式未收录：{removed}");
+        }
         var martianPair = MartianDictionary.Map.First(kv => kv.Value.Length == 1 && kv.Value[0] != kv.Key);
         Check(bundledStyles["mars-reverse"].Transform(martianPair.Value) == martianPair.Key.ToString(), "火星文解药还原");
         Check(bundledStyles.TryGetValue("mars-star", out _) == false, "火星文组合样式已按用户反馈移除");

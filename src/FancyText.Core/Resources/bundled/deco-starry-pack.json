@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "星月夜",
   "author": "FancyText",
-  "description": "官方装饰扩充包：星月氛围前后缀（弦月框 / 星屑流 / 星芒光晕 / 三连星）、星点字距、逐字星缀与头顶星点，共 15 个纯数据样式（wrapString / spacing / wrapEach / appendMark），不引入新算法。码点取星月几何符号与日文半角片假名区，均在 Windows 10/11 自带字体覆盖范围内，不出豆腐块。",
+  "description": "官方装饰扩充包：星月氛围前后缀（弦月框 / 星屑流 / 三连星 / 星点圈 / 描边重星）、星点字距、逐字度圈，共 10 个纯数据样式（wrapString / spacing / wrapEach），不引入新算法，不与内置样式重复（✧･ﾟ 闪耀边框、☾✦ 星月装饰等同款已内置）。码点取星月几何符号与日文半角片假名区，均在 Windows 10/11 自带字体覆盖范围内，不出豆腐块。",
   "styles": [
     {
       "id": "starry-moon-pair",
@@ -16,17 +16,6 @@
       ]
     },
     {
-      "id": "starry-day-night",
-      "name": "星与月 ✦☾",
-      "nameEn": "Star & Moon ✦☾",
-      "category": "decoration",
-      "note": "整串包围（wrapString）：✦ U+2726 黑四角星开头 / ☾ U+263E 月牙收尾，昼夜各执一侧",
-      "noteEn": "Whole-string wrap (wrapString): ✦ U+2726 star opens, ☾ U+263E moon closes",
-      "steps": [
-        { "op": "wrapString", "prefix": "✦ ", "suffix": " ☾" }
-      ]
-    },
-    {
       "id": "starry-stardust",
       "name": "星屑流 ⋆｡ﾟ",
       "nameEn": "Stardust Trail ⋆｡ﾟ",
@@ -35,17 +24,6 @@
       "noteEn": "Whole-string wrap (wrapString): ⋆ U+22C6 star operator + ｡ U+FF61 + ﾟ U+FF9F halfwidth marks, classic Japanese aesthetic",
       "steps": [
         { "op": "wrapString", "prefix": "⋆｡ﾟ", "suffix": "ﾟ｡⋆" }
-      ]
-    },
-    {
-      "id": "starry-glow",
-      "name": "星芒光晕 ✧･ﾟ",
-      "nameEn": "Star Glow ✧･ﾟ",
-      "category": "decoration",
-      "note": "整串包围（wrapString）：✧ U+2727 白四角星 + ･ U+FF65 半角中点 + ﾟ U+FF9F 半角浊点，向两侧晕开",
-      "noteEn": "Whole-string wrap (wrapString): ✧ U+2727 white star + ･ U+FF65 + ﾟ U+FF9F halfwidth marks glowing outward",
-      "steps": [
-        { "op": "wrapString", "prefix": "✧･ﾟ", "suffix": "ﾟ･✧" }
       ]
     },
     {
@@ -134,40 +112,6 @@
       "noteEn": "Per-grapheme suffix (wrapEach): ˚ U+02DA ring appended after every character, like tiny moons overhead",
       "steps": [
         { "op": "wrapEach", "prefix": "", "suffix": "˚" }
-      ]
-    },
-    {
-      "id": "starry-each-star",
-      "name": "逐字星 ✧",
-      "nameEn": "Per-char Sparkle ✧",
-      "category": "decoration",
-      "note": "逐字前缀（wrapEach）：✧ U+2727 白四角星缀在每个字前",
-      "noteEn": "Per-grapheme prefix (wrapEach): ✧ U+2727 white star prepended to every character",
-      "steps": [
-        { "op": "wrapEach", "prefix": "✧", "suffix": "" }
-      ]
-    },
-    {
-      "id": "starry-mark-double-dot",
-      "name": "头顶双星点 ×2",
-      "nameEn": "Twin Dots Above ×2",
-      "category": "decoration",
-      "note": "附加组合符（appendMark）：U+0307 组合上加点 ×2 叠在每个字素头顶，中英通吃",
-      "noteEn": "Combining mark (appendMark): U+0307 dot above ×2 stacked over each grapheme, works for CJK and Latin",
-      "steps": [
-        { "op": "appendMark", "mark": "\u0307", "repeat": 2 }
-      ]
-    },
-    {
-      "id": "starry-night-combo",
-      "name": "星距月框 ☾✧☽",
-      "nameEn": "Moon-Framed Star Spacing ☾✧☽",
-      "category": "decoration",
-      "note": "组合管道：先字距（spacing ✧ U+2727）再整串包围（wrapString ☾ U+263E / ☽ U+263D），星空成框",
-      "noteEn": "Pipeline: sparkle spacing (✧ U+2727) then crescent wrap (☾ U+263E / ☽ U+263D), a framed night sky",
-      "steps": [
-        { "op": "spacing", "separator": "✧" },
-        { "op": "wrapString", "prefix": "☾ ", "suffix": " ☽" }
       ]
     }
   ]

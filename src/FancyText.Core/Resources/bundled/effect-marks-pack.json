@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "叠加特效",
   "author": "FancyText",
-  "description": "官方特效扩充包：头顶小字母系列（组合上标小字母 U+0363–036F 全 13 枚）、帽子族与下方族组合符、长斜杠穿字、热汗字与菊花文力度档，共 32 个纯数据样式（appendMark 及其组合管道），不引入新算法。组合符均取 U+0300–036F 与 U+0489，Windows 自带字体覆盖；叠加类效果在手机端聊天软件显示最佳，桌面端个别字体可能轻微错位。",
+  "description": "官方特效扩充包：头顶小字母系列（组合上标小字母 U+0363–036F 全 13 枚）、帽子族与下方族组合符、长斜杠穿字，共 28 个纯数据样式（appendMark 单步原子）。只收录内置没有的组合符，不收录可两步组合得到的效果（叠两层、删+划等）与内置已有的力度档。组合符均取 U+0300–036F，Windows 自带字体覆盖；叠加效果在手机端聊天软件显示最佳，桌面端个别字体可能轻微错位。",
   "styles": [
     {
       "id": "mark-tiny-a",
@@ -255,48 +255,6 @@
       "note": "附加组合符（appendMark）：U+0338 组合长斜线，整字划上禁止线（短版 U+0337 已内置，此为长版）",
       "noteEn": "Combining mark (appendMark): U+0338 long solidus overlay striking through each grapheme (short U+0337 is built in; this is the long one)",
       "steps": [ { "op": "appendMark", "mark": "\u0338" } ]
-    },
-    {
-      "id": "mark-sweat",
-      "name": "热汗字",
-      "nameEn": "Sweating Text",
-      "category": "effect",
-      "note": "组合管道：U+0307 上加点 + U+0323 下加点各一枚，头冒汗脚出汗，经典「热」字效果",
-      "noteEn": "Pipeline: U+0307 dot above + U+0323 dot below per grapheme, the classic sweating-text effect",
-      "steps": [
-        { "op": "appendMark", "mark": "\u0307" },
-        { "op": "appendMark", "mark": "\u0323" }
-      ]
-    },
-    {
-      "id": "mark-juhua-double",
-      "name": "菊花文·加密 ×2",
-      "nameEn": "Chrysanthemum ×2",
-      "category": "effect",
-      "note": "附加组合符（appendMark）：U+0489 组合西里尔百万符 ×2，菊花文加密档（原味 ×1 已内置）",
-      "noteEn": "Combining mark (appendMark): U+0489 combining cyrillic millions ×2, the encrypted chrysanthemum level (plain ×1 is built in)",
-      "steps": [ { "op": "appendMark", "mark": "\u0489", "repeat": 2 } ]
-    },
-    {
-      "id": "mark-juhua-triple",
-      "name": "菊花文·重度 ×3",
-      "nameEn": "Chrysanthemum ×3",
-      "category": "effect",
-      "note": "附加组合符（appendMark）：U+0489 ×3，重度菊花，行高会明显撑开",
-      "noteEn": "Combining mark (appendMark): U+0489 ×3, heavy chrysanthemum; line height visibly expands",
-      "steps": [ { "op": "appendMark", "mark": "\u0489", "repeat": 3 } ]
-    },
-    {
-      "id": "mark-strike-under",
-      "name": "删除+下划",
-      "nameEn": "Strikethrough + Underline",
-      "category": "effect",
-      "note": "组合管道：U+0336 长删除线穿字 + U+0332 下划线，旧签名改错风",
-      "noteEn": "Pipeline: U+0336 long strikethrough + U+0332 low line, the crossed-out-correction look",
-      "steps": [
-        { "op": "appendMark", "mark": "\u0336" },
-        { "op": "appendMark", "mark": "\u0332" }
-      ]
     }
   ]
 }
