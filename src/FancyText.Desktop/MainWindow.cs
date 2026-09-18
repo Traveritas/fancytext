@@ -344,7 +344,7 @@ internal sealed class MainWindow : Window
         searchIcon.Margin = new Thickness(2, 0, 8, 0);
 
         // 筛选状态机：_filter 是唯一真源。点菜单分类 → ⭐/🕘 取消勾选；点图标 → 标签联动；任一变化 → RebuildList。
-        var catalog = FilterOption.Catalog(lang).ToArray();
+        var catalog = FilterOption.Catalog(lang, StyleCatalog.All).ToArray();
         _filter = catalog.First(o => o.Equals(_filter)); // 换成新语言实例（标签随语言，相等性只看语义键）
         _menuItems = [];
 
@@ -752,24 +752,30 @@ internal sealed class MainWindow : Window
         return style;
     }
 
-    /// <summary>筛选项：全部 / 收藏 / 最近 / 一个具体分类。相等性只看语义键（语言切换重建筛选控件后选中态不丢）。</summary>
-    private sealed record FilterOption(string Label, TextStyleCategory? Category = null, bool Pinned = false, bool Recent = false)
+    /// <summary>筛选项：全部 / 收藏 / 最近 / 一个具体分类（内置 6 类或包自定义类）。相等性只看语义键（语言切换重建筛选控件后选中态不丢）。</summary>
+    private sealed record FilterOption(string Label, string? CategoryKey = null, bool Pinned = false, bool Recent = false)
     {
         public static FilterOption All { get; } = new("全部");
 
-        /// <summary>全部 → 收藏 → 最近 → 六个分类（枚举声明顺序），即工具栏顺序。</summary>
-        public static IEnumerable<FilterOption> Catalog(AppLanguage lang) =>
+        /// <summary>全部 → 收藏 → 最近 → 六个内置分类（枚举声明顺序）→ 自定义分类（目录内首次出现顺序）。</summary>
+        public static IEnumerable<FilterOption> Catalog(AppLanguage lang, IEnumerable<TextStyle> styles) =>
         [
             new FilterOption(Loc.S(lang, "全部", "All")),
             new FilterOption(Loc.S(lang, "收藏", "Pinned"), Pinned: true),
             new FilterOption(Loc.S(lang, "最近", "Recent"), Recent: true),
-            .. Enum.GetValues<TextStyleCategory>().Select(c => new FilterOption(c.DisplayName(lang), c)),
+            .. Enum.GetValues<TextStyleCategory>()
+                .Where(c => c != TextStyleCategory.Custom)
+                .Select(c => new FilterOption(c.DisplayName(lang), c.ToString())),
+            .. styles.Where(s => s.Category == TextStyleCategory.Custom)
+                .Select(s => s.CategoryKey)
+                .Distinct(StringComparer.Ordinal)
+                .Select(key => new FilterOption(key, key)),
         ];
 
         public bool Equals(FilterOption? other) =>
-            other is not null && Category == other.Category && Pinned == other.Pinned && Recent == other.Recent;
+            other is not null && CategoryKey == other.CategoryKey && Pinned == other.Pinned && Recent == other.Recent;
 
-        public override int GetHashCode() => HashCode.Combine(Category, Pinned, Recent);
+        public override int GetHashCode() => HashCode.Combine(CategoryKey, Pinned, Recent);
     }
 
     /// <summary>图标字体字形（搜索/收藏/最近）：Segoe Fluent Icons 优先，Win10 回退 MDL2。</summary>
@@ -808,7 +814,7 @@ internal sealed class MainWindow : Window
     /// 纯键盘通道——三个筛选按钮（下拉/⭐/🕘）的键盘等价物；焦点经收口回到输入框，↑↓ 浏览不中断。</summary>
     private void CycleFilter(int delta)
     {
-        var catalog = FilterOption.Catalog(Lang).ToArray();
+        var catalog = FilterOption.Catalog(Lang, StyleCatalog.All).ToArray();
         var index = Array.FindIndex(catalog, o => o.Equals(_filter));
         index = (index + delta + catalog.Length) % catalog.Length;
         _filter = catalog[index];
@@ -1472,8 +1478,8 @@ internal sealed class MainWindow : Window
                 PreviewText = OneLine(preview),
                 IsPinned = _usage.IsPinned(style.Id),
                 CategoryName = style.Source is StyleSource.Pack { PackName: var pack }
-                    ? $"{style.Category.DisplayName(Lang)} · {pack}"
-                    : style.Category.DisplayName(Lang),
+                    ? $"{style.GetCategoryName(Lang)} · {pack}"
+                    : style.GetCategoryName(Lang),
                 FamilyKey = StyleFamilies.GetFamilyKey(style),
             });
         }
@@ -1663,9 +1669,9 @@ internal sealed class MainWindow : Window
             return StylesByIds(_usage.Recent);
         }
 
-        if (filter.Category is { } category)
+        if (filter.CategoryKey is { } categoryKey)
         {
-            return StyleCatalog.All.Where(s => s.Category == category);
+            return StyleCatalog.All.Where(s => string.Equals(s.CategoryKey, categoryKey, StringComparison.Ordinal));
         }
 
         return StyleCatalog.All;
@@ -2017,7 +2023,7 @@ internal sealed class MainWindow : Window
     /// 经 ApplyFilterChange 收口（焦点回输入框 + RebuildList 顺带重置分区为列表区）。</summary>
     private void ToggleSpecialFilter(bool pinned)
     {
-        var catalog = FilterOption.Catalog(Lang).ToArray();
+        var catalog = FilterOption.Catalog(Lang, StyleCatalog.All).ToArray();
         var special = catalog.First(o => pinned ? o.Pinned : o.Recent);
         _filter = _filter.Equals(special) ? catalog[0] : special;
         ApplyFilterChange();

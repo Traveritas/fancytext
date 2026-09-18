@@ -20,7 +20,7 @@ internal static class StylePackJson
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         };
-        options.Converters.Add(new TextStyleCategoryJsonConverter());
+        options.Converters.Add(new StyleDefinitionJsonConverter());
         options.Converters.Add(new TransformStepJsonConverter());
         return options;
     }
@@ -104,22 +104,139 @@ internal static class StylePackJson
     }
 }
 
-/// <summary>分类 ↔ kebab-case 字符串（包内 category 字段）。</summary>
-internal sealed class TextStyleCategoryJsonConverter : JsonConverter<TextStyleCategory>
+/// <summary>
+/// 样式定义序列化：category 字段写 6 个内置 kebab 名之一走内置类，
+/// 其余任意非空字符串（≤ <see cref="StylePacks.MaxCategoryNameLength"/> 码元、健康字符）视为包自定义类别，
+/// 原文存入 <see cref="StyleDefinition.CustomCategoryName"/> 并在界面原样显示。
+/// </summary>
+internal sealed class StyleDefinitionJsonConverter : JsonConverter<StyleDefinition>
 {
-    public override TextStyleCategory Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public override StyleDefinition? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        var name = reader.TokenType == JsonTokenType.String ? reader.GetString() : null;
-        if (name is null || !StylePackJson.TryParseCategory(name, out var category))
+        using var doc = JsonDocument.ParseValue(ref reader);
+        var element = doc.RootElement;
+        if (element.ValueKind != JsonValueKind.Object)
         {
-            throw new JsonException($"未知分类：\"{name}\"（可选 effect / latin-fancy / decoration / transform / chinese / encoding）");
+            throw new JsonException("样式必须是 JSON 对象");
         }
 
-        return category;
+        string? id = null, name = null, customCategory = null, note = null, noteEn = null, nameEn = null;
+        var category = default(TextStyleCategory);
+        var categorySet = false;
+        IReadOnlyList<TransformStep>? steps = null;
+        foreach (var property in element.EnumerateObject())
+        {
+            switch (property.Name)
+            {
+                case "id":
+                    id = property.Value.GetString();
+                    break;
+                case "name":
+                    name = property.Value.GetString();
+                    break;
+                case "nameEn":
+                    nameEn = property.Value.GetString();
+                    break;
+                case "category":
+                    var categoryName = property.Value.ValueKind == JsonValueKind.String ? property.Value.GetString() : null;
+                    if (string.IsNullOrWhiteSpace(categoryName))
+                    {
+                        throw new JsonException("category 不能为空");
+                    }
+
+                    if (StylePacks.IsHealthyText(categoryName, StylePacks.MaxCategoryNameLength))
+                    {
+                        if (StylePackJson.TryParseCategory(categoryName, out category))
+                        {
+                            customCategory = null;
+                        }
+                        else
+                        {
+                            category = TextStyleCategory.Custom;
+                            customCategory = categoryName;
+                        }
+
+                        categorySet = true;
+                    }
+                    else
+                    {
+                        throw new JsonException(
+                            $"自定义类别 \"{categoryName}\" 不合法（{StylePacks.MaxCategoryNameLength} 码元以内，禁止孤立代理对与控制字符；内置类别可用 effect / latin-fancy / decoration / transform / chinese / encoding）");
+                    }
+
+                    break;
+                case "note":
+                    note = property.Value.GetString();
+                    break;
+                case "noteEn":
+                    noteEn = property.Value.GetString();
+                    break;
+                case "steps":
+                    steps = property.Value.Deserialize<IReadOnlyList<TransformStep>>(options);
+                    break;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            throw new JsonException("样式缺少 id");
+        }
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new JsonException($"样式 {id} 缺少 name");
+        }
+
+        if (!categorySet)
+        {
+            throw new JsonException($"样式 {id} 缺少 category");
+        }
+
+        if (steps is not { Count: > 0 })
+        {
+            throw new JsonException($"样式 {id} 缺少 steps");
+        }
+
+        return new StyleDefinition
+        {
+            Id = id,
+            Name = name,
+            NameEn = nameEn,
+            Category = category,
+            CustomCategoryName = customCategory,
+            Note = note,
+            NoteEn = noteEn,
+            Steps = steps,
+        };
     }
 
-    public override void Write(Utf8JsonWriter writer, TextStyleCategory value, JsonSerializerOptions options) =>
-        writer.WriteStringValue(StylePackJson.ToKebab(value));
+    public override void Write(Utf8JsonWriter writer, StyleDefinition value, JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("id", value.Id);
+        writer.WriteString("name", value.Name);
+        if (value.NameEn is not null)
+        {
+            writer.WriteString("nameEn", value.NameEn);
+        }
+
+        writer.WriteString(
+            "category",
+            value.Category == TextStyleCategory.Custom ? value.CustomCategoryName : StylePackJson.ToKebab(value.Category));
+        if (value.Note is not null)
+        {
+            writer.WriteString("note", value.Note);
+        }
+
+        if (value.NoteEn is not null)
+        {
+            writer.WriteString("noteEn", value.NoteEn);
+        }
+
+        writer.WritePropertyName("steps");
+        JsonSerializer.Serialize(writer, value.Steps, options);
+        writer.WriteEndObject();
+    }
 }
 
 /// <summary>

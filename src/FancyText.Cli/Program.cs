@@ -82,9 +82,9 @@ public static class Program
 
         if (args.Contains("--list"))
         {
-            foreach (var g in StyleCatalog.All.GroupBy(s => s.Category))
+            foreach (var g in StyleCatalog.All.GroupBy(s => s.CategoryKey))
             {
-                Console.WriteLine($"[{g.Key.DisplayName(Lang)}]");
+                Console.WriteLine($"[{g.First().GetCategoryName(Lang)}]");
                 foreach (var s in g)
                 {
                     Console.WriteLine($"  {s.Id,-22} {s.GetName(Lang)}");
@@ -130,9 +130,9 @@ public static class Program
         // 默认：全部样式表格
         Console.WriteLine(Loc.S(Lang, $"输入：{text}", $"Input: {text}"));
         Console.WriteLine(new string('─', 60));
-        foreach (var g in StyleCatalog.All.GroupBy(s => s.Category))
+        foreach (var g in StyleCatalog.All.GroupBy(s => s.CategoryKey))
         {
-            Console.WriteLine($"[{g.Key.DisplayName(Lang)}]");
+            Console.WriteLine($"[{g.First().GetCategoryName(Lang)}]");
             foreach (var style in g)
             {
                 var output = SafeTransform(style, text);
@@ -173,7 +173,7 @@ public static class Program
         {
             id = s.Id,
             name = s.Name,
-            category = s.Category.ToString(),
+            category = s.CategoryKey,
             output = SafeTransform(s, text),
         });
         Console.WriteLine(JsonSerializer.Serialize(payload, new JsonSerializerOptions

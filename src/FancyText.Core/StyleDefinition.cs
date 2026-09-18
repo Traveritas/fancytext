@@ -24,6 +24,9 @@ public sealed record StyleDefinition
 
     public required TextStyleCategory Category { get; init; }
 
+    /// <summary>自定义类别名（Category == Custom 时必填）：category 字段写 6 个内置名之外的字符串即自定义类别。</summary>
+    public string? CustomCategoryName { get; init; }
+
     /// <summary>机制说明（码点/来源），显示在详情页。</summary>
     public string? Note { get; init; }
 
@@ -54,12 +57,18 @@ public static class StyleFactory
             throw new ArgumentException($"样式 {definition.Id} 至少需要一个转换步骤", nameof(definition));
         }
 
+        if (definition.Category == TextStyleCategory.Custom && string.IsNullOrWhiteSpace(definition.CustomCategoryName))
+        {
+            throw new ArgumentException($"样式 {definition.Id} 使用自定义类别但缺少类名", nameof(definition));
+        }
+
         return new TextStyle
         {
             Id = definition.Id,
             Name = definition.Name,
             NameEn = definition.NameEn,
             Category = definition.Category,
+            CustomCategoryName = definition.CustomCategoryName,
             Note = definition.Note,
             NoteEn = definition.NoteEn,
             Definition = definition,

@@ -166,6 +166,13 @@ public static class StylePacks
                 Fail($"noteEn 超过 {MaxNoteLength} 字符");
             }
 
+            if (style.Category == TextStyleCategory.Custom
+                && (string.IsNullOrWhiteSpace(style.CustomCategoryName)
+                    || !IsHealthyText(style.CustomCategoryName, MaxCategoryNameLength)))
+            {
+                Fail($"自定义类别名不合法（{MaxCategoryNameLength} 码元以内，禁止孤立代理对与控制字符）");
+            }
+
             if (style.Steps is not { Count: > 0 })
             {
                 Fail("至少需要一个步骤");
@@ -626,6 +633,16 @@ public static class StylePacks
         }
 
         var pack = parsed.Pack;
+
+        // 官方包改名迁移：删掉旧名安装文件（ID 相同，留着会让新名包被冲突拦截）
+        foreach (var (oldName, newName) in OfficialPackRenames)
+        {
+            if (string.Equals(newName, pack.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                _ = Remove(oldName);
+            }
+        }
+
         var conflicts = FindConflicts(pack);
         if (conflicts.Count > 0)
         {
@@ -723,4 +740,15 @@ public static class StylePacks
     public const int MaxIdLength = 64;
     public const int MaxNameLength = 48;
     public const int MaxNoteLength = 200;
+    public const int MaxCategoryNameLength = 24;
+
+    /// <summary>官方包改名史（旧名 → 新名）：安装新名官方包时清掉磁盘上的旧名文件，避免同 ID 冲突拒装。</summary>
+    private static readonly Dictionary<string, string> OfficialPackRenames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["华丽装饰扩充"] = "华丽装饰",
+        ["星月夜装饰扩充"] = "星月夜",
+        ["叠加特效扩充"] = "叠加特效",
+        ["颜文字情绪扩充"] = "颜文字",
+        ["火星文非主流扩充"] = "火星文",
+    };
 }

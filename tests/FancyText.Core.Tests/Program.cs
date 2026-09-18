@@ -26,6 +26,13 @@ public static class Program
             return 0;
         }
 
+        // 密闭环境：整个测试期把包目录与状态文件指到临时目录——
+        // 否则会扫到本机真实 %LOCALAPPDATA%\FancyText\styles 里用户已安装的包，结果随机器状态漂移
+        var hermeticDir = Path.Combine(Path.GetTempPath(), "fancytext-tests-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(hermeticDir);
+        StylePacks.DirectoryOverrideForTests = hermeticDir;
+        UsageState.StatePathOverrideForTests = Path.Combine(hermeticDir, "state.json");
+
         TestPrimitives();
         TestLatinMaps();
         TestCombiningStyles();
@@ -45,6 +52,16 @@ public static class Program
 
         Console.WriteLine();
         Console.WriteLine($"通过 {_passed} 项，失败 {_failed} 项");
+        StylePacks.DirectoryOverrideForTests = null;
+        UsageState.StatePathOverrideForTests = null;
+        try
+        {
+            Directory.Delete(hermeticDir, recursive: true);
+        }
+        catch (IOException)
+        {
+        }
+
         return _failed == 0 ? 0 : 1;
     }
 
@@ -108,7 +125,7 @@ public static class Program
                 output = $"（出错：{ex.Message}）";
             }
 
-            Console.WriteLine($"[{style.CategoryDisplayName}] {style.Name,-16} → {output}");
+            Console.WriteLine($"[{style.GetCategoryName(AppLanguage.Chinese)}] {style.Name,-16} → {output}");
         }
 
         return;
@@ -394,14 +411,16 @@ public static class Program
         var mismatches = new List<string>();
         foreach (var style in StyleCatalog.All)
         {
+            // 随机算法（zalgo 家族）无法逐字节对比——按管道内容识别，包内组合样式同样跳过
+            if (style.Definition!.Steps.Any(st => st is AlgorithmStep alg && alg.Algorithm
+                    is KnownAlgorithm.ZalgoMini or KnownAlgorithm.ZalgoNormal or KnownAlgorithm.ZalgoMax))
+            {
+                continue;
+            }
+
             var recompiled = StyleInterpreter.Compile(style.Definition!.Steps);
             foreach (var sample in samples)
             {
-                if (style.Id is "zalgo-mini" or "zalgo-normal" or "zalgo-max")
-                {
-                    continue; // 随机算法无法逐字节对比
-                }
-
                 if (recompiled(sample) != style.Transform(sample))
                 {
                     mismatches.Add(style.Id);
@@ -494,7 +513,9 @@ public static class Program
             ("未知 op", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"encoding","steps":[{"op":"explode"}]}]}"""),
             ("未知内置表", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"encoding","steps":[{"op":"useMap","map":"nope"}]}]}"""),
             ("未知算法", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"transform","steps":[{"op":"algorithm","name":"nope"}]}]}"""),
-            ("未知分类", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"fancy","steps":[{"op":"reverse"}]}]}"""),
+            ("类别为空", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"","steps":[{"op":"reverse"}]}]}"""),
+            ("自定义类别超长", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"一二三四五六七八九十一二三四五六七八九十一二三四五","steps":[{"op":"reverse"}]}]}"""),
+            ("类别含控制字符", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"颜\u0007文字","steps":[{"op":"reverse"}]}]}"""),
             ("schemaVersion 不符", """{"schemaVersion":2,"name":"x","styles":[{"id":"a-1","name":"A","category":"encoding","steps":[{"op":"reverse"}]}]}"""),
             ("空样式表", """{"schemaVersion":1,"name":"x","styles":[]}"""),
             ("嵌套守卫", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"encoding","steps":[{"op":"ifChanged","inner":{"op":"ifChanged","inner":{"op":"reverse"}}}]}]}"""),
@@ -515,6 +536,21 @@ public static class Program
             "alias.json");
         Check(legacyCategory.Pack?.Styles[0].Category == TextStyleCategory.CjkEffect, "分类历史写法 cjk-effect 兼容");
 
+        // 包自定义类别：category 写 6 个内置名之外的字符串即自定义类（界面显示原文）
+        var customCatJson = """{"schemaVersion":1,"name":"自定义类别包","styles":[{"id":"cc-1","name":"颜","category":"颜文字","steps":[{"op":"reverse"}]}]}""";
+        var ccParsed = StylePacks.ParseJson(customCatJson, "cc.json");
+        Check(ccParsed.Pack?.Styles[0].Category == TextStyleCategory.Custom, "自定义类别解析为 Custom", string.Join("; ", ccParsed.Errors));
+        if (ccParsed.Pack is { } ccPack)
+        {
+            var ccStyle = StyleFactory.FromDefinition(ccPack.Styles[0]);
+            Check(ccStyle.CustomCategoryName == "颜文字" && ccStyle.CategoryKey == "颜文字"
+                && ccStyle.GetCategoryName(AppLanguage.Chinese) == "颜文字"
+                && ccStyle.GetCategoryName(AppLanguage.English) == "颜文字", "自定义类名：键与双语显示均为原文");
+            var ccRound = StylePacks.ParseJson(StylePacks.Serialize(ccPack), "cc-round.json");
+            Check(ccRound.Pack?.Styles[0].Category == TextStyleCategory.Custom
+                && ccRound.Pack.Styles[0].CustomCategoryName == "颜文字", "自定义类别导出往返", string.Join("; ", ccRound.Errors));
+        }
+
         // 包内引用中文算法（简繁/拼音）：曾因校验常量停在 StripCombiningMarks 被"未知算法"误拒
         var zhAlgJson = """{"schemaVersion":1,"name":"中文算法包","styles":[{"id":"zh-s2t","name":"简转繁","category":"chinese","steps":[{"op":"algorithm","name":"simplified-to-traditional"}]},{"id":"zh-py","name":"拼音缩写","category":"chinese","steps":[{"op":"algorithm","name":"pinyin-abbr"}]}]}""";
         var zhParsed = StylePacks.ParseJson(zhAlgJson, "zh.json");
@@ -526,7 +562,9 @@ public static class Program
             Check(zhStyles["zh-py"].Transform("你好") == "nh", "包内拼音缩写算法生效");
         }
 
-        // 安装 / 扫描 / Reload / 冲突 / 卸载（临时目录）
+        // 安装 / 扫描 / Reload / 冲突 / 卸载（临时目录；保存并恢复外层密闭环境）
+        var prevPackDir = StylePacks.DirectoryOverrideForTests;
+        var prevStatePath = UsageState.StatePathOverrideForTests;
         var tempDir = Path.Combine(Path.GetTempPath(), "fancytext-packs-test-" + Path.GetRandomFileName());
         Directory.CreateDirectory(tempDir);
         StylePacks.DirectoryOverrideForTests = tempDir;
@@ -558,7 +596,7 @@ public static class Program
         }
         finally
         {
-            StylePacks.DirectoryOverrideForTests = null;
+            StylePacks.DirectoryOverrideForTests = prevPackDir;
             try
             {
                 Directory.Delete(tempDir, recursive: true);
@@ -582,7 +620,7 @@ public static class Program
         }
         finally
         {
-            StylePacks.DirectoryOverrideForTests = null;
+            StylePacks.DirectoryOverrideForTests = prevPackDir;
             try
             {
                 Directory.Delete(tempDir2, recursive: true);
@@ -597,6 +635,8 @@ public static class Program
     private static void TestPackDisable()
     {
         Console.WriteLine("包停用：");
+        var prevPackDir = StylePacks.DirectoryOverrideForTests;
+        var prevStatePath = UsageState.StatePathOverrideForTests;
         var tempDir = Path.Combine(Path.GetTempPath(), "fancytext-disable-test-" + Path.GetRandomFileName());
         Directory.CreateDirectory(tempDir);
         StylePacks.DirectoryOverrideForTests = tempDir;
@@ -644,8 +684,8 @@ public static class Program
         }
         finally
         {
-            UsageState.StatePathOverrideForTests = null;
-            StylePacks.DirectoryOverrideForTests = null;
+            UsageState.StatePathOverrideForTests = prevStatePath;
+            StylePacks.DirectoryOverrideForTests = prevPackDir;
             StyleCatalog.Reload();
             try
             {
@@ -661,6 +701,9 @@ public static class Program
     private static void TestBundledPacks()
     {
         Console.WriteLine("内嵌官方包：");
+        // 保存外层密闭环境（Main 已把包目录指到临时目录），本测试换用自己的临时目录后原样恢复
+        var prevPackDir = StylePacks.DirectoryOverrideForTests;
+        var prevStatePath = UsageState.StatePathOverrideForTests;
         // 合成资源嵌在测试程序集（LogicalName 与 Core 约定前缀一致），经 internal LoadBundledFrom 枚举
         var bundled = StylePacks.LoadBundledFrom(typeof(Program).Assembly);
         Check(bundled.Count == 1, "合成内嵌包被枚举到", $"实际 {bundled.Count} 个");
@@ -681,8 +724,8 @@ public static class Program
         var coreBundled = StylePacks.LoadBundled();
         Check(coreBundled.Count == 5, "Core 内嵌官方包共 5 个", $"实际 {coreBundled.Count} 个");
         Check(coreBundled.Select(p => p.PackName).OrderBy(n => n, StringComparer.Ordinal).SequenceEqual(
-            new[] { "叠加特效扩充", "星月夜装饰扩充", "火星文非主流扩充", "华丽装饰扩充", "颜文字情绪扩充" }
-                .OrderBy(n => n, StringComparer.Ordinal)), "官方包名单齐整");
+            new[] { "叠加特效", "星月夜", "火星文", "华丽装饰", "颜文字" }
+                .OrderBy(n => n, StringComparer.Ordinal)), "官方包名单齐整（无「扩充」后缀）");
         Check(coreBundled.All(p => p.Styles.All(s => !string.IsNullOrEmpty(s.NameEn) && !string.IsNullOrEmpty(s.NoteEn))),
             "官方包样式双语齐备（nameEn/noteEn）");
         var builtInIds = StyleCatalog.BuiltInIds.ToHashSet(StringComparer.Ordinal);
@@ -697,6 +740,10 @@ public static class Program
         var martianPair = MartianDictionary.Map.First(kv => kv.Value.Length == 1 && kv.Value[0] != kv.Key);
         Check(bundledStyles["mars-reverse"].Transform(martianPair.Value) == martianPair.Key.ToString(), "火星文解药还原");
         Check(bundledStyles["mars-star"].Transform(martianPair.Key.ToString()) == "★ " + martianPair.Value + " ★", "火星文星框");
+        Check(bundledStyles["kao-joy-smile"].Category == TextStyleCategory.Custom
+            && bundledStyles["kao-joy-smile"].CustomCategoryName == "颜文字", "官方包自定义类别（颜文字）");
+        Check(bundledStyles["mars-star"].Category == TextStyleCategory.Custom
+            && bundledStyles["mars-star"].CustomCategoryName == "火星文", "官方包自定义类别（火星文）");
 
         var tempDir = Path.Combine(Path.GetTempPath(), "fancytext-bundled-test-" + Path.GetRandomFileName());
         Directory.CreateDirectory(tempDir);
@@ -720,14 +767,23 @@ public static class Program
             var blocked = StylePacks.InstallBundled(sample);
             Check(!blocked.Success && blocked.Errors.Count > 0, "与其他包 ID 冲突被拦截", string.Join("; ", blocked.Errors));
 
-            Check(StylePacks.Remove("官方样例包") && StylePacks.Remove("抢占包"), "清理安装文件");
+            // 官方包改名迁移：磁盘上有旧名包（同 ID）时，安装新名官方包应顺带清掉旧文件
+            File.WriteAllText(Path.Combine(tempDir, "华丽装饰扩充.json"),
+                """{"schemaVersion":1,"name":"华丽装饰扩充","styles":[{"id":"deco-bracket-square","name":"旧名包","category":"decoration","steps":[{"op":"reverse"}]}]}""");
+            var renamed = new BundledPack("华丽装饰", "deco-wings-pack.json", [],
+                """{"schemaVersion":1,"name":"华丽装饰","styles":[{"id":"deco-bracket-square","name":"方括号","category":"decoration","steps":[{"op":"wrapString","prefix":"【","suffix":"】"}]}]}""");
+            var migrated = StylePacks.InstallBundled(renamed);
+            Check(migrated.Success, "改名官方包安装成功（旧名同 ID 不再拦截）", string.Join("; ", migrated.Errors));
+            Check(!File.Exists(Path.Combine(tempDir, "华丽装饰扩充.json")), "旧名安装文件被迁移清除");
+
+            Check(StylePacks.Remove("官方样例包") && StylePacks.Remove("抢占包") && StylePacks.Remove("华丽装饰"), "清理安装文件");
             StyleCatalog.Reload();
             Check(StyleCatalog.All.All(s => s.Id != "bundled-sample"), "卸载后样式退出目录");
         }
         finally
         {
-            UsageState.StatePathOverrideForTests = null;
-            StylePacks.DirectoryOverrideForTests = null;
+            UsageState.StatePathOverrideForTests = prevStatePath;
+            StylePacks.DirectoryOverrideForTests = prevPackDir;
             StyleCatalog.Reload();
             try
             {

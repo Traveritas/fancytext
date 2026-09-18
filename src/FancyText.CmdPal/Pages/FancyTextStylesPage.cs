@@ -48,6 +48,7 @@ internal sealed partial class FancyTextStylesPage : DebouncedTextPageBase
         _usage = usage;
         _lang = Localization.Resolve(usage.Language);
         _categoryTags = Enum.GetValues<TextStyleCategory>()
+            .Where(c => c != TextStyleCategory.Custom)
             .ToDictionary(c => c, c => new Tag(c.DisplayName(_lang)));
         Category = category;
 
@@ -81,7 +82,7 @@ internal sealed partial class FancyTextStylesPage : DebouncedTextPageBase
             {
                 Title = string.Empty,
                 Subtitle = style.GetName(_lang),
-                Tags = [_categoryTags[style.Category]],
+                Tags = [_categoryTags.TryGetValue(style.Category, out var tag) ? tag : new Tag(style.GetCategoryName(_lang))],
                 Details = details,
                 MoreCommands =
                 [

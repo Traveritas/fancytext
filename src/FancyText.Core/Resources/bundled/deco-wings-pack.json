@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "name": "华丽装饰扩充",
+  "name": "华丽装饰",
   "author": "FancyText",
   "description": "官方装饰扩充包：成对括号新变体、星花雪叶角饰、音乐爱心箭头、线框角隅、行间分隔，共 33 个纯数据样式（wrapString / wrapEach / spacing / mapReplace），不引入新算法。全部码点均在 Windows 10/11 自带字体（Segoe UI Symbol、Microsoft YaHei UI 等）覆盖范围内，不出豆腐块。",
   "styles": [

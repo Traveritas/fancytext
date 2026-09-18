@@ -20,6 +20,9 @@ public enum TextStyleCategory
 
     /// <summary>编码类：Base64、ROT13、摩斯电码。</summary>
     Encoding,
+
+    /// <summary>包自定义类别（如「颜文字」「火星文」）：类名见 <see cref="TextStyle.CustomCategoryName"/>，显示原文。</summary>
+    Custom,
 }
 
 public static class TextStyleCategoryExtensions
@@ -50,6 +53,12 @@ public static class TextStyleCategoryExtensions
         },
         _ => category.DisplayName(),
     };
+
+    /// <summary>类别显示名（含自定义类别原文）。无语言参数时中文优先。</summary>
+    public static string DisplayNameOf(this TextStyleCategory category, string? customCategoryName, AppLanguage lang) =>
+        category == TextStyleCategory.Custom
+            ? (string.IsNullOrWhiteSpace(customCategoryName) ? "自定义" : customCategoryName)
+            : category.DisplayName(lang);
 }
 
 /// <summary>一个可用的文字样式 = 元数据 + 转换函数。</summary>
@@ -65,6 +74,15 @@ public sealed record TextStyle
     public string? NameEn { get; init; }
 
     public required TextStyleCategory Category { get; init; }
+
+    /// <summary>自定义类别名（Category == Custom 时必填，如「颜文字」）；显示时用原文。</summary>
+    public string? CustomCategoryName { get; init; }
+
+    /// <summary>类别语义键：内置类为枚举名，自定义类为类名原文——筛选/分组用它比较（语言无关）。</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string CategoryKey => Category == TextStyleCategory.Custom
+        ? (string.IsNullOrWhiteSpace(CustomCategoryName) ? nameof(TextStyleCategory.Custom) : CustomCategoryName!)
+        : Category.ToString();
 
     /// <summary>纯函数：输入原文，输出转换结果。不得抛异常（内部自行兜底）。</summary>
     public required Func<string, string> Transform { get; init; }
@@ -89,5 +107,7 @@ public sealed record TextStyle
     /// <summary>来源：内置或外部样式包。由 <see cref="StyleFactory.FromDefinition"/> 填充；null 视为内置。</summary>
     public StyleSource? Source { get; init; }
 
-    public string CategoryDisplayName => Category.DisplayName();
+    /// <summary>类别显示名（自定义类别显示原文，双语）。</summary>
+    public string GetCategoryName(AppLanguage lang) =>
+        TextStyleCategoryExtensions.DisplayNameOf(Category, CustomCategoryName, lang);
 }

@@ -32,6 +32,12 @@ internal sealed partial class GoToCategoryCommand : InvokableCommand
 
     public GoToCategoryCommand(TextStyleCategory? category, AppLanguage lang)
     {
+        // 自定义类别无专页（CmdPal 页静态构建），跳转回退到"全部样式"
+        if (category == TextStyleCategory.Custom)
+        {
+            category = null;
+        }
+
         _pageId = Pages.FancyTextStylesPage.PageIdFor(category);
         var displayName = category is { } c
             ? c.DisplayName(lang)

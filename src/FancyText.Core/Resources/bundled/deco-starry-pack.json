@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "name": "星月夜装饰扩充",
+  "name": "星月夜",
   "author": "FancyText",
   "description": "官方装饰扩充包：星月氛围前后缀（弦月框 / 星屑流 / 星芒光晕 / 三连星）、星点字距、逐字星缀与头顶星点，共 15 个纯数据样式（wrapString / spacing / wrapEach / appendMark），不引入新算法。码点取星月几何符号与日文半角片假名区，均在 Windows 10/11 自带字体覆盖范围内，不出豆腐块。",
   "styles": [

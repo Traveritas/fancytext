@@ -25,7 +25,9 @@ public sealed partial class FancyTextCommandsProvider : CommandProvider
         Icon = new IconInfo("\uE8C8");
 
         _allStylesPage = new FancyTextStylesPage(_shared, _usage, category: null);
+        // 自定义类别不建专页（页面静态构建）：其样式仍出现在"全部样式"页
         _categoryPages = Enum.GetValues<TextStyleCategory>()
+            .Where(c => c != TextStyleCategory.Custom)
             .ToDictionary(c => c, c => new FancyTextStylesPage(_shared, _usage, c));
         _home = new FancyTextHomePage(_shared, _usage, _allStylesPage, _categoryPages);
     }
