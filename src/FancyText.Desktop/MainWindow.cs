@@ -345,7 +345,7 @@ internal sealed class MainWindow : Window
 
         // 筛选状态机：_filter 是唯一真源。点菜单分类 → ⭐/🕘 取消勾选；点图标 → 标签联动；任一变化 → RebuildList。
         var catalog = FilterOption.Catalog(lang, StyleCatalog.All).ToArray();
-        _filter = catalog.First(o => o.Equals(_filter)); // 换成新语言实例（标签随语言，相等性只看语义键）
+        _filter = catalog.FirstOrDefault(o => o.Equals(_filter)) ?? catalog[0]; // 换成新语言实例；失效筛选（如已卸载包的自定义类）回「全部」
         _menuItems = [];
 
         _filterChipLabel = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
@@ -1689,10 +1689,11 @@ internal sealed class MainWindow : Window
         }
     }
 
-    /// <summary>样式包导入/卸载后：重建 ID 索引与列表（由设置页调用；插件版需重启其进程）。</summary>
+    /// <summary>样式包导入/卸载后：重建 ID 索引与整体 UI——筛选菜单含动态自定义类别，仅 RebuildList 刷不到（语言切换同机制）。</summary>
     internal void RefreshStyles()
     {
         _stylesById = StyleCatalog.All.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+        BuildUi();
         RebuildList();
     }
 
