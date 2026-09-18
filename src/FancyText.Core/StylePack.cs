@@ -269,7 +269,7 @@ public static class StylePacks
                 break;
 
             case AlgorithmStep algorithm:
-                if (algorithm.Algorithm is < 0 or > (KnownAlgorithm)AlgorithmCount)
+                if (!System.Enum.IsDefined(algorithm.Algorithm))
                 {
                     return [$"未知算法：{algorithm.Algorithm}"];
                 }
@@ -723,6 +723,4 @@ public static class StylePacks
     public const int MaxIdLength = 64;
     public const int MaxNameLength = 48;
     public const int MaxNoteLength = 200;
-
-    private const int AlgorithmCount = (int)KnownAlgorithm.StripCombiningMarks;
 }

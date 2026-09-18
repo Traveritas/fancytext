@@ -1,0 +1,302 @@
+{
+  "schemaVersion": 1,
+  "name": "叠加特效扩充",
+  "author": "FancyText",
+  "description": "官方特效扩充包：头顶小字母系列（组合上标小字母 U+0363–036F 全 13 枚）、帽子族与下方族组合符、长斜杠穿字、热汗字与菊花文力度档，共 32 个纯数据样式（appendMark 及其组合管道），不引入新算法。组合符均取 U+0300–036F 与 U+0489，Windows 自带字体覆盖；叠加类效果在手机端聊天软件显示最佳，桌面端个别字体可能轻微错位。",
+  "styles": [
+    {
+      "id": "mark-tiny-a",
+      "name": "头顶小字母 a",
+      "nameEn": "Tiny 'a' Above",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0363 组合上标小写 a，每字素头顶浮一枚",
+      "noteEn": "Combining mark (appendMark): U+0363 combining latin small letter a floating above each grapheme",
+      "steps": [ { "op": "appendMark", "mark": "\u0363" } ]
+    },
+    {
+      "id": "mark-tiny-e",
+      "name": "头顶小字母 e",
+      "nameEn": "Tiny 'e' Above",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0364 组合上标小写 e",
+      "noteEn": "Combining mark (appendMark): U+0364 combining latin small letter e",
+      "steps": [ { "op": "appendMark", "mark": "\u0364" } ]
+    },
+    {
+      "id": "mark-tiny-i",
+      "name": "头顶小字母 i",
+      "nameEn": "Tiny 'i' Above",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0365 组合上标小写 i",
+      "noteEn": "Combining mark (appendMark): U+0365 combining latin small letter i",
+      "steps": [ { "op": "appendMark", "mark": "\u0365" } ]
+    },
+    {
+      "id": "mark-tiny-o",
+      "name": "头顶小字母 o",
+      "nameEn": "Tiny 'o' Above",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0366 组合上标小写 o，形似头顶气泡",
+      "noteEn": "Combining mark (appendMark): U+0366 combining latin small letter o, like a bubble overhead",
+      "steps": [ { "op": "appendMark", "mark": "\u0366" } ]
+    },
+    {
+      "id": "mark-tiny-u",
+      "name": "头顶小字母 u",
+      "nameEn": "Tiny 'u' Above",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0367 组合上标小写 u",
+      "noteEn": "Combining mark (appendMark): U+0367 combining latin small letter u",
+      "steps": [ { "op": "appendMark", "mark": "\u0367" } ]
+    },
+    {
+      "id": "mark-tiny-c",
+      "name": "头顶小字母 c",
+      "nameEn": "Tiny 'c' Above",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0368 组合上标小写 c",
+      "noteEn": "Combining mark (appendMark): U+0368 combining latin small letter c",
+      "steps": [ { "op": "appendMark", "mark": "\u0368" } ]
+    },
+    {
+      "id": "mark-tiny-d",
+      "name": "头顶小字母 d",
+      "nameEn": "Tiny 'd' Above",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0369 组合上标小写 d",
+      "noteEn": "Combining mark (appendMark): U+0369 combining latin small letter d",
+      "steps": [ { "op": "appendMark", "mark": "\u0369" } ]
+    },
+    {
+      "id": "mark-tiny-h",
+      "name": "头顶小字母 h",
+      "nameEn": "Tiny 'h' Above",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+036A 组合上标小写 h",
+      "noteEn": "Combining mark (appendMark): U+036A combining latin small letter h",
+      "steps": [ { "op": "appendMark", "mark": "\u036A" } ]
+    },
+    {
+      "id": "mark-tiny-m",
+      "name": "头顶小字母 m",
+      "nameEn": "Tiny 'm' Above",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+036B 组合上标小写 m",
+      "noteEn": "Combining mark (appendMark): U+036B combining latin small letter m",
+      "steps": [ { "op": "appendMark", "mark": "\u036B" } ]
+    },
+    {
+      "id": "mark-tiny-r",
+      "name": "头顶小字母 r",
+      "nameEn": "Tiny 'r' Above",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+036C 组合上标小写 r",
+      "noteEn": "Combining mark (appendMark): U+036C combining latin small letter r",
+      "steps": [ { "op": "appendMark", "mark": "\u036C" } ]
+    },
+    {
+      "id": "mark-tiny-t",
+      "name": "头顶小字母 t",
+      "nameEn": "Tiny 't' Above",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+036D 组合上标小写 t",
+      "noteEn": "Combining mark (appendMark): U+036D combining latin small letter t",
+      "steps": [ { "op": "appendMark", "mark": "\u036D" } ]
+    },
+    {
+      "id": "mark-tiny-v",
+      "name": "头顶小字母 v",
+      "nameEn": "Tiny 'v' Above",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+036E 组合上标小写 v",
+      "noteEn": "Combining mark (appendMark): U+036E combining latin small letter v",
+      "steps": [ { "op": "appendMark", "mark": "\u036E" } ]
+    },
+    {
+      "id": "mark-tiny-x",
+      "name": "头顶小字母 x",
+      "nameEn": "Tiny 'x' Above",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+036F 组合上标小写 x，本系列最后一枚",
+      "noteEn": "Combining mark (appendMark): U+036F combining latin small letter x, the last of the series",
+      "steps": [ { "op": "appendMark", "mark": "\u036F" } ]
+    },
+    {
+      "id": "mark-hat-circumflex",
+      "name": "尖角帽 ˆ",
+      "nameEn": "Circumflex Hat ˆ",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0302 组合抑扬符（尖帽 ^），中英通吃",
+      "noteEn": "Combining mark (appendMark): U+0302 circumflex accent (^) above each grapheme",
+      "steps": [ { "op": "appendMark", "mark": "\u0302" } ]
+    },
+    {
+      "id": "mark-hat-breve",
+      "name": "圆弧帽 ˘",
+      "nameEn": "Breve Hat ˘",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0306 组合短音符（圆弧帽）",
+      "noteEn": "Combining mark (appendMark): U+0306 breve (rounded cap) above each grapheme",
+      "steps": [ { "op": "appendMark", "mark": "\u0306" } ]
+    },
+    {
+      "id": "mark-hat-caron",
+      "name": "倒尖帽 ˇ",
+      "nameEn": "Caron Hat ˇ",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+030C 组合倒抑扬符（倒尖帽）",
+      "noteEn": "Combining mark (appendMark): U+030C caron (inverted cap) above each grapheme",
+      "steps": [ { "op": "appendMark", "mark": "\u030C" } ]
+    },
+    {
+      "id": "mark-hat-tilde",
+      "name": "波浪帽 ~",
+      "nameEn": "Tilde Hat ~",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0303 组合波浪号（头顶小波浪）",
+      "noteEn": "Combining mark (appendMark): U+0303 tilde (small wave) above each grapheme",
+      "steps": [ { "op": "appendMark", "mark": "\u0303" } ]
+    },
+    {
+      "id": "mark-dots-above",
+      "name": "头顶双点 ¨",
+      "nameEn": "Diaeresis Dots ¨",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0308 组合分音符（头顶两点，变形记号）",
+      "noteEn": "Combining mark (appendMark): U+0308 diaeresis (two dots) above each grapheme",
+      "steps": [ { "op": "appendMark", "mark": "\u0308" } ]
+    },
+    {
+      "id": "mark-line-above",
+      "name": "上竖线 |",
+      "nameEn": "Vertical Line Above |",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+030D 组合上竖线，字头立天线",
+      "noteEn": "Combining mark (appendMark): U+030D vertical line above, an antenna on every character",
+      "steps": [ { "op": "appendMark", "mark": "\u030D" } ]
+    },
+    {
+      "id": "mark-double-line-above",
+      "name": "双上竖线 ‖",
+      "nameEn": "Double Line Above ‖",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+030E 组合双上竖线",
+      "noteEn": "Combining mark (appendMark): U+030E double vertical line above each grapheme",
+      "steps": [ { "op": "appendMark", "mark": "\u030E" } ]
+    },
+    {
+      "id": "mark-breve-inverted",
+      "name": "倒圆弧帽 ̑",
+      "nameEn": "Inverted Breve ̑",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0311 组合倒短音符（下开口圆弧）",
+      "noteEn": "Combining mark (appendMark): U+0311 inverted breve above each grapheme",
+      "steps": [ { "op": "appendMark", "mark": "\u0311" } ]
+    },
+    {
+      "id": "mark-dots-below",
+      "name": "底部双点",
+      "nameEn": "Diaeresis Below",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0324 组合下分音符（字底两点）",
+      "noteEn": "Combining mark (appendMark): U+0324 diaeresis below (two dots under each grapheme)",
+      "steps": [ { "op": "appendMark", "mark": "\u0324" } ]
+    },
+    {
+      "id": "mark-ring-below",
+      "name": "底部圆圈",
+      "nameEn": "Ring Below",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0325 组合下圆圈，字底踩圈",
+      "noteEn": "Combining mark (appendMark): U+0325 ring below each grapheme",
+      "steps": [ { "op": "appendMark", "mark": "\u0325" } ]
+    },
+    {
+      "id": "mark-line-below",
+      "name": "下竖线",
+      "nameEn": "Vertical Line Below",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0329 组合下竖线，字底扎针",
+      "noteEn": "Combining mark (appendMark): U+0329 vertical line below each grapheme",
+      "steps": [ { "op": "appendMark", "mark": "\u0329" } ]
+    },
+    {
+      "id": "mark-comma-below",
+      "name": "汗滴下撇",
+      "nameEn": "Comma Below (Sweat)",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0316 组合下重力符，形似字底挂汗滴",
+      "noteEn": "Combining mark (appendMark): U+0316 grave accent below, like a sweat drop under each grapheme",
+      "steps": [ { "op": "appendMark", "mark": "\u0316" } ]
+    },
+    {
+      "id": "mark-cedilla",
+      "name": "尾巴钩 ¸",
+      "nameEn": "Cedilla Tail ¸",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0327 组合软音符（变尾钩）",
+      "noteEn": "Combining mark (appendMark): U+0327 cedilla (hooked tail) below each grapheme",
+      "steps": [ { "op": "appendMark", "mark": "\u0327" } ]
+    },
+    {
+      "id": "mark-ogonek",
+      "name": "鼻音钩 ˛",
+      "nameEn": "Ogonek Hook ˛",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0328 组合鼻音符（右开口小钩）",
+      "noteEn": "Combining mark (appendMark): U+0328 ogonek (little hook) below each grapheme",
+      "steps": [ { "op": "appendMark", "mark": "\u0328" } ]
+    },
+    {
+      "id": "mark-slash-long",
+      "name": "长斜杠穿字",
+      "nameEn": "Long Solidus Overlay",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0338 组合长斜线，整字划上禁止线（短版 U+0337 已内置，此为长版）",
+      "noteEn": "Combining mark (appendMark): U+0338 long solidus overlay striking through each grapheme (short U+0337 is built in; this is the long one)",
+      "steps": [ { "op": "appendMark", "mark": "\u0338" } ]
+    },
+    {
+      "id": "mark-sweat",
+      "name": "热汗字",
+      "nameEn": "Sweating Text",
+      "category": "effect",
+      "note": "组合管道：U+0307 上加点 + U+0323 下加点各一枚，头冒汗脚出汗，经典「热」字效果",
+      "noteEn": "Pipeline: U+0307 dot above + U+0323 dot below per grapheme, the classic sweating-text effect",
+      "steps": [
+        { "op": "appendMark", "mark": "\u0307" },
+        { "op": "appendMark", "mark": "\u0323" }
+      ]
+    },
+    {
+      "id": "mark-juhua-double",
+      "name": "菊花文·加密 ×2",
+      "nameEn": "Chrysanthemum ×2",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0489 组合西里尔百万符 ×2，菊花文加密档（原味 ×1 已内置）",
+      "noteEn": "Combining mark (appendMark): U+0489 combining cyrillic millions ×2, the encrypted chrysanthemum level (plain ×1 is built in)",
+      "steps": [ { "op": "appendMark", "mark": "\u0489", "repeat": 2 } ]
+    },
+    {
+      "id": "mark-juhua-triple",
+      "name": "菊花文·重度 ×3",
+      "nameEn": "Chrysanthemum ×3",
+      "category": "effect",
+      "note": "附加组合符（appendMark）：U+0489 ×3，重度菊花，行高会明显撑开",
+      "noteEn": "Combining mark (appendMark): U+0489 ×3, heavy chrysanthemum; line height visibly expands",
+      "steps": [ { "op": "appendMark", "mark": "\u0489", "repeat": 3 } ]
+    },
+    {
+      "id": "mark-strike-under",
+      "name": "删除+下划",
+      "nameEn": "Strikethrough + Underline",
+      "category": "effect",
+      "note": "组合管道：U+0336 长删除线穿字 + U+0332 下划线，旧签名改错风",
+      "noteEn": "Pipeline: U+0336 long strikethrough + U+0332 low line, the crossed-out-correction look",
+      "steps": [
+        { "op": "appendMark", "mark": "\u0336" },
+        { "op": "appendMark", "mark": "\u0332" }
+      ]
+    }
+  ]
+}

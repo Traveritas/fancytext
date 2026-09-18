@@ -88,6 +88,12 @@ public partial class App : Application, IDisposable
             executeOnlyOnce: false);
 
         _tray = new TrayIconController(_mainWindow, OpenSettings);
+
+        // 冷启动带 --settings 直接开设置窗（原先只有二次启动信号路径会打开）
+        if (openSettings)
+        {
+            OpenSettings();
+        }
     }
 
     /// <summary>打开设置窗口：单例（已开则提前），随关随清引用。</summary>

@@ -182,6 +182,7 @@ public static class Program
         CheckEqual(U(0x212D), TextTransforms.MapReplace("C", LatinMaps.Fraktur), "Fraktur 洞字符 C→ℭ");
         CheckEqual(U(0x2128), TextTransforms.MapReplace("Z", LatinMaps.Fraktur), "Fraktur 洞字符 Z→ℨ");
         CheckEqual(U(0x2102), TextTransforms.MapReplace("C", LatinMaps.DoubleStruck), "DoubleStruck 洞字符 C→ℂ");
+        CheckEqual(U(0x211D), TextTransforms.MapReplace("R", LatinMaps.DoubleStruck), "DoubleStruck 洞字符 R→ℝ（曾误用花体 ℜ U+211C）");
         CheckEqual("𝟙𝟚𝟛", TextTransforms.MapReplace("123", LatinMaps.DoubleStruck), "DoubleStruck 数字");
         CheckEqual("𝙷𝚎𝚕𝚕𝚘", TextTransforms.MapReplace("Hello", LatinMaps.Monospace), "Monospace");
         CheckEqual("Ⓗⓔⓛⓛⓞ", TextTransforms.MapReplace("Hello", LatinMaps.Circled), "Circled 大写");
@@ -514,6 +515,17 @@ public static class Program
             "alias.json");
         Check(legacyCategory.Pack?.Styles[0].Category == TextStyleCategory.CjkEffect, "分类历史写法 cjk-effect 兼容");
 
+        // 包内引用中文算法（简繁/拼音）：曾因校验常量停在 StripCombiningMarks 被"未知算法"误拒
+        var zhAlgJson = """{"schemaVersion":1,"name":"中文算法包","styles":[{"id":"zh-s2t","name":"简转繁","category":"chinese","steps":[{"op":"algorithm","name":"simplified-to-traditional"}]},{"id":"zh-py","name":"拼音缩写","category":"chinese","steps":[{"op":"algorithm","name":"pinyin-abbr"}]}]}""";
+        var zhParsed = StylePacks.ParseJson(zhAlgJson, "zh.json");
+        Check(zhParsed.Pack is not null, "包内中文算法通过校验", string.Join("; ", zhParsed.Errors));
+        if (zhParsed.Pack is { } zhPack)
+        {
+            var zhStyles = zhPack.Styles.Select(d => StyleFactory.FromDefinition(d, new StyleSource.Pack(zhPack.Name))).ToDictionary(s => s.Id);
+            Check(zhStyles["zh-s2t"].Transform("头发") == "頭髮", "包内简→繁算法生效");
+            Check(zhStyles["zh-py"].Transform("你好") == "nh", "包内拼音缩写算法生效");
+        }
+
         // 安装 / 扫描 / Reload / 冲突 / 卸载（临时目录）
         var tempDir = Path.Combine(Path.GetTempPath(), "fancytext-packs-test-" + Path.GetRandomFileName());
         Directory.CreateDirectory(tempDir);
@@ -664,6 +676,27 @@ public static class Program
 
         // 内嵌官方包已落地（deco-wings-pack.json）：枚举非空且逐个解析健康（glob 暂缺时回退为空）
         Check(StylePacks.LoadBundled().All(p => p.Styles.Count > 0 && !string.IsNullOrEmpty(p.PackName)), "Core 程序集 LoadBundled 解析健康");
+
+        // 官方包矩阵：deco-wings + 星月夜 / 叠加特效 / 颜文字 / 火星文，共 5 个
+        var coreBundled = StylePacks.LoadBundled();
+        Check(coreBundled.Count == 5, "Core 内嵌官方包共 5 个", $"实际 {coreBundled.Count} 个");
+        Check(coreBundled.Select(p => p.PackName).OrderBy(n => n, StringComparer.Ordinal).SequenceEqual(
+            new[] { "叠加特效扩充", "星月夜装饰扩充", "火星文非主流扩充", "华丽装饰扩充", "颜文字情绪扩充" }
+                .OrderBy(n => n, StringComparer.Ordinal)), "官方包名单齐整");
+        Check(coreBundled.All(p => p.Styles.All(s => !string.IsNullOrEmpty(s.NameEn) && !string.IsNullOrEmpty(s.NoteEn))),
+            "官方包样式双语齐备（nameEn/noteEn）");
+        var builtInIds = StyleCatalog.BuiltInIds.ToHashSet(StringComparer.Ordinal);
+        Check(coreBundled.All(p => p.Styles.All(s => !builtInIds.Contains(s.Id))), "官方包 ID 不与内置冲突");
+
+        // 新包转换抽查（编译产物即面板所用管线）
+        var bundledStyles = coreBundled.SelectMany(p => p.Styles).ToDictionary(s => s.Id);
+        Check(bundledStyles["starry-glow"].Transform("夜") == "✧･ﾟ夜ﾟ･✧", "星月夜·光晕包裹");
+        Check(bundledStyles["kao-joy-smile"].Transform("你好") == "你好 (´ω｀)", "颜文字后缀");
+        Check(bundledStyles["mark-sweat"].Transform("好") == "好\u0307\u0323", "热汗字上下加点");
+        Check(bundledStyles["kao-words-happy"].Transform("爱笑") == "(｡♡‿♡｡)(´ω｀)", "情绪字映射");
+        var martianPair = MartianDictionary.Map.First(kv => kv.Value.Length == 1 && kv.Value[0] != kv.Key);
+        Check(bundledStyles["mars-reverse"].Transform(martianPair.Value) == martianPair.Key.ToString(), "火星文解药还原");
+        Check(bundledStyles["mars-star"].Transform(martianPair.Key.ToString()) == "★ " + martianPair.Value + " ★", "火星文星框");
 
         var tempDir = Path.Combine(Path.GetTempPath(), "fancytext-bundled-test-" + Path.GetRandomFileName());
         Directory.CreateDirectory(tempDir);

@@ -1,0 +1,268 @@
+{
+  "schemaVersion": 1,
+  "name": "颜文字情绪扩充",
+  "author": "FancyText",
+  "description": "官方装饰扩充包：按情绪分组的颜文字后缀——开心 / 可爱 / 慵懒 / 伤心 / 爱意 / 打气共 20 款（全部不超过 8 码元，适配昵称长度预算），另有单字情绪→颜文字映射 2 款。纯数据样式（wrapString / mapReplace），不引入新算法。字符取日文假名、泰文、谚文与几何符号等常见区，Windows 10/11 自带字体覆盖。",
+  "styles": [
+    {
+      "id": "kao-joy-smile",
+      "name": "后缀·微笑 (´ω｀)",
+      "nameEn": "Suffix · Smile (´ω｀)",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：´ U+00B4 / ω / ｀ U+FF40，基础笑脸",
+      "noteEn": "Whole-string suffix (wrapString): the classic (´ω｀) smile",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " (´ω｀)" }
+      ]
+    },
+    {
+      "id": "kao-joy-grin",
+      "name": "后缀·眯眼笑 (⌒‿⌒)",
+      "nameEn": "Suffix · Grin (⌒‿⌒)",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：⌒ U+2312 圆弧 ×2 夹 ‿ U+203F undertie，眯眼笑",
+      "noteEn": "Whole-string suffix (wrapString): ⌒ U+2312 arcs around ‿ U+203F, a beaming grin",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " (⌒‿⌒)" }
+      ]
+    },
+    {
+      "id": "kao-joy-stars",
+      "name": "后缀·星星眼 (☆▽☆)",
+      "nameEn": "Suffix · Star Eyes (☆▽☆)",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：☆ U+2606 星眼 + ▽ U+25BD 开口嘴",
+      "noteEn": "Whole-string suffix (wrapString): ☆ U+2606 star eyes + ▽ U+25BD open mouth",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " (☆▽☆)" }
+      ]
+    },
+    {
+      "id": "kao-joy-cheer",
+      "name": "后缀·欢呼 ヽ(´▽｀)ノ",
+      "nameEn": "Suffix · Cheer ヽ(´▽｀)ノ",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：ヽ U+30FD / ノ U+30CE 举手，8 码元满额",
+      "noteEn": "Whole-string suffix (wrapString): ヽ U+30FD / ノ U+30CE raised arms, at the 8-unit cap",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " ヽ(´▽｀)ノ" }
+      ]
+    },
+    {
+      "id": "kao-joy-party",
+      "name": "后缀·开心蹦 ٩(◕‿◕)۶",
+      "nameEn": "Suffix · Party ٩(◕‿◕)۶",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：٩ U+0669 / ۶ U+06F6 阿拉伯数字举手，◕ U+25D5 圆眼",
+      "noteEn": "Whole-string suffix (wrapString): ٩ U+0669 / ۶ U+06F6 Arabic digits as arms, ◕ U+25D5 round eyes",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " ٩(◕‿◕)۶" }
+      ]
+    },
+    {
+      "id": "kao-cute-cat",
+      "name": "后缀·猫爪 (ฅ´ω`ฅ)",
+      "nameEn": "Suffix · Cat Paws (ฅ´ω`ฅ)",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：ฅ U+0E05 泰文字母 kho khwaen 当猫爪，8 码元满额",
+      "noteEn": "Whole-string suffix (wrapString): ฅ U+0E05 Thai kho khwaen as cat paws, at the 8-unit cap",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": "(ฅ´ω`ฅ)" }
+      ]
+    },
+    {
+      "id": "kao-cute-shy",
+      "name": "后缀·害羞 (っ˘ω˘ς)",
+      "nameEn": "Suffix · Shy (っ˘ω˘ς)",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：っ U+3063 小っ / ς U+03C2 当手，˘ U+02D8 眯眼",
+      "noteEn": "Whole-string suffix (wrapString): っ U+3063 and ς U+03C2 as hands, ˘ U+02D8 closed eyes",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " (っ˘ω˘ς)" }
+      ]
+    },
+    {
+      "id": "kao-cute-bloom",
+      "name": "后缀·花开 (✿◠‿◠)",
+      "nameEn": "Suffix · Bloom (✿◠‿◠)",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：✿ U+273F 花 + ◠ U+25E0 上半圆弯眼",
+      "noteEn": "Whole-string suffix (wrapString): ✿ U+273F florette + ◠ U+25E0 upper-half-circle happy eyes",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " (✿◠‿◠)" }
+      ]
+    },
+    {
+      "id": "kao-cute-soft",
+      "name": "后缀·软萌 (◕ᴗ◕)",
+      "nameEn": "Suffix · Soft (◕ᴗ◕)",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：◕ U+25D5 圆眼 + ᴗ U+1D57 语音学扩展小写 n 形嘴",
+      "noteEn": "Whole-string suffix (wrapString): ◕ U+25D5 round eyes + ᴗ U+1D57 small-cap n as mouth",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " (◕ᴗ◕)" }
+      ]
+    },
+    {
+      "id": "kao-cute-mochi",
+      "name": "后缀·圆糯 (˶ᵔᵕᵔ˶)",
+      "nameEn": "Suffix · Mochi (˶ᵔᵕᵔ˶)",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：˶ U+02F6 modifier 起手 + ᵔ U+1D54 / ᵕ U+1D55 糯米团脸",
+      "noteEn": "Whole-string suffix (wrapString): ˶ U+02F6 + ᵔ U+1D54 / ᵕ U+1D55, a squishy mochi face",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " (˶ᵔᵕᵔ˶)" }
+      ]
+    },
+    {
+      "id": "kao-smug-proud",
+      "name": "后缀·得意 (￣▽￣)",
+      "nameEn": "Suffix · Smug (￣▽￣)",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：￣ U+FFE3 全角长音横眉，得意的豆芽脸",
+      "noteEn": "Whole-string suffix (wrapString): ￣ U+FFE3 macron brows, the classic smug face",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " (￣▽￣)" }
+      ]
+    },
+    {
+      "id": "kao-smug-chill",
+      "name": "后缀·慵懒 (￣ω￣)",
+      "nameEn": "Suffix · Chill (￣ω￣)",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：￣ U+FFE3 横眉 + ω 嘴，懒洋洋",
+      "noteEn": "Whole-string suffix (wrapString): ￣ U+FFE3 brows + ω mouth, laid-back",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " (￣ω￣)" }
+      ]
+    },
+    {
+      "id": "kao-smug-meh",
+      "name": "后缀·无语 (¬_¬)",
+      "nameEn": "Suffix · Meh (¬_¬)",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：¬ U+00AC 否定号斜眼 + _ U+005F 平嘴",
+      "noteEn": "Whole-string suffix (wrapString): ¬ U+00AC not-sign side-eye + _ U+005F flat mouth",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " (¬_¬)" }
+      ]
+    },
+    {
+      "id": "kao-sad-cry",
+      "name": "后缀·大哭 (T▽T)",
+      "nameEn": "Suffix · Crying (T▽T)",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：T U+0054 泪眼 + ▽ U+25BD 张嘴哭",
+      "noteEn": "Whole-string suffix (wrapString): T U+0054 tearful eyes + ▽ U+25BD wailing mouth",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " (T▽T)" }
+      ]
+    },
+    {
+      "id": "kao-sad-down",
+      "name": "后缀·蔫了 (´-ω-`)",
+      "nameEn": "Suffix · Deflated (´-ω-`)",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：´ U+00B4 / ` U+0060 垂眉 + - U+002D 嘴角下垂",
+      "noteEn": "Whole-string suffix (wrapString): ´ U+00B4 / ` U+0060 drooping brows + - U+002D mouth",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " (´-ω-`)" }
+      ]
+    },
+    {
+      "id": "kao-sad-sweat",
+      "name": "后缀·冷汗 (；∀;)",
+      "nameEn": "Suffix · Nervous (；∀;)",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：；U+FF1B 全角分号汗滴 + ∀ U+2200 全称量词张嘴",
+      "noteEn": "Whole-string suffix (wrapString): ；U+FF1B fullwidth semicolons as sweat + ∀ U+2200 gaping mouth",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " (；∀;)" }
+      ]
+    },
+    {
+      "id": "kao-love-eyes",
+      "name": "后缀·花痴 (｡♡‿♡｡)",
+      "nameEn": "Suffix · Lovestruck (｡♡‿♡｡)",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：♡ U+2661 空心心眼（永不 emoji 化）+ ｡ U+FF61 腮红点",
+      "noteEn": "Whole-string suffix (wrapString): ♡ U+2661 heart eyes (never emoji-fied) + ｡ U+FF61 blush dots",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " (｡♡‿♡｡)" }
+      ]
+    },
+    {
+      "id": "kao-love-tender",
+      "name": "后缀·温柔 (♡´︿`♡)",
+      "nameEn": "Suffix · Tender (♡´︿`♡)",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：♡ U+2661 框住 ︿ U+FE3F 湿润睫毛，8 码元满额",
+      "noteEn": "Whole-string suffix (wrapString): ♡ U+2661 framing ︿ U+FE3F dewy lashes, at the 8-unit cap",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " (♡´︿`♡)" }
+      ]
+    },
+    {
+      "id": "kao-flex-muscle",
+      "name": "后缀·秀肌肉 ᕙ(`▿´)ᕗ",
+      "nameEn": "Suffix · Flex ᕙ(`▿´)ᕗ",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：ᕙ U+1555 / ᕗ U+1557 加拿大原住民音节文字当手臂，8 码元满额",
+      "noteEn": "Whole-string suffix (wrapString): ᕙ U+1555 / ᕗ U+1557 Canadian syllabics as arms, at the 8-unit cap",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " ᕙ(`▿´)ᕗ" }
+      ]
+    },
+    {
+      "id": "kao-music-hum",
+      "name": "后缀·哼歌 (♪ω♪)",
+      "nameEn": "Suffix · Humming (♪ω♪)",
+      "category": "decoration",
+      "note": "整串后缀（wrapString）：♪ U+266A 八分音符当眼",
+      "noteEn": "Whole-string suffix (wrapString): ♪ U+266A eighth notes as eyes",
+      "steps": [
+        { "op": "wrapString", "prefix": "", "suffix": " (♪ω♪)" }
+      ]
+    },
+    {
+      "id": "kao-words-happy",
+      "name": "情绪字·开心版",
+      "nameEn": "Emotion Words · Happy",
+      "category": "transform",
+      "note": "内联映射表（mapReplace）：笑/爱/喜/乖/萌 五个字各自换成对应颜文字（值均 ≤8 码元）",
+      "noteEn": "Inline map (mapReplace): 笑/爱/喜/乖/萌 each replaced by its kaomoji (values within 8 units)",
+      "steps": [
+        {
+          "op": "mapReplace",
+          "map": {
+            "笑": "(´ω｀)",
+            "爱": "(｡♡‿♡｡)",
+            "喜": "ヽ(´▽｀)ノ",
+            "乖": "(๑˘︶˘๑)",
+            "萌": "(◕ᴗ◕)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "kao-words-sad",
+      "name": "情绪字·丧气版",
+      "nameEn": "Emotion Words · Gloomy",
+      "category": "transform",
+      "note": "内联映射表（mapReplace）：哭/怒/累/晕/饿 五个字各自换成对应颜文字",
+      "noteEn": "Inline map (mapReplace): 哭/怒/累/晕/饿 each replaced by its kaomoji",
+      "steps": [
+        {
+          "op": "mapReplace",
+          "map": {
+            "哭": "(T▽T)",
+            "怒": "(＃`Д´)",
+            "累": "(￣_￣)",
+            "晕": "(¬_¬)",
+            "饿": "(๑´ㅂ`๑)"
+          }
+        }
+      ]
+    }
+  ]
+}

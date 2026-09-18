@@ -50,7 +50,7 @@ public static class LatinMaps
         BuildBlock(upperStart: 0x1D538, lowerStart: 0x1D552, digitStart: 0x1D7D8, overrides: new Dictionary<char, string>
         {
             ['C'] = "\u2102", ['H'] = "\u210D", ['N'] = "\u2115", ['P'] = "\u2119",
-            ['Q'] = "\u211A", ['R'] = "\u211C", ['Z'] = "\u2124",
+            ['Q'] = "\u211A", ['R'] = "\u211D", ['Z'] = "\u2124", // R=ℝ：勿与花体 R ℜ U+211C（上方 Fraktur 表）混淆
         });
 
     public static IReadOnlyDictionary<char, string> Monospace { get; } =
