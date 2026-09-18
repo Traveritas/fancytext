@@ -319,6 +319,11 @@ internal sealed class MainWindow : Window
             FontSize = 18,
             Padding = new Thickness(2),
             VerticalContentAlignment = VerticalAlignment.Center,
+            // 高度按行封顶：输入行以 Dock.Top 挂根容器（纵向无限测量），超长文本（预填/粘贴）
+            // 会按内容行数撑高直至吃满整窗、列表归零——MaxLines 以行数为单位，随字号与 DPI 缩放；
+            // 超出部分在框内滚动（Enter 仍复制全文，输入内容不截断）
+            MaxLines = 4,
+            TextWrapping = TextWrapping.Wrap, // 超长单行折行展示（默认横向滚动只能看到开头一截）
             // 注意：输入框不设字体回退链——WPF 会把字体名传给 IME（组合窗口字体），
             // 链式多字体名超过 LOGFONT 32 字符上限是非法名，会导致 IME 组合失败、无法打字（能删不能输）。
             // 预览列表的 TextBlock 不参与 IME，保留完整回退链防豆腐块。
@@ -327,6 +332,9 @@ internal sealed class MainWindow : Window
             Foreground = _theme.Text,
             CaretBrush = _theme.Primary,
         };
+        // TextBox 默认滚动条可见性是 Hidden：封顶后被裁的内容需要可见的滚动通道（细滚动条样式挂根容器已全局生效）。
+        // 横向保持 Hidden——细滚动条模板只写了纵向 Track
+        ScrollViewer.SetVerticalScrollBarVisibility(_inputBox, ScrollBarVisibility.Auto);
         _inputBox.TextChanged += (_, _) => { _debounce.Stop(); _debounce.Start(); }; // 每次击键重置 150ms 防抖
 
         var lang = Lang;
@@ -579,12 +587,30 @@ internal sealed class MainWindow : Window
             FocusVisualStyle = null, // 键盘导航已有选中覆盖层，关掉 WPF 默认的整框虚线焦点矩形
         };
         ScrollViewer.SetHorizontalScrollBarVisibility(_listBox, ScrollBarVisibility.Disabled);
-        _listBox.MouseDoubleClick += (_, _) => ActivateSelected(); // 双击等价回车（族条目钻入/返回行钻出同分派）
-        _listBox.PreviewMouseLeftButtonDown += (_, _) =>
+        _listBox.MouseDoubleClick += (_, _) => { LogDiag("activate: mouse double-click"); ActivateSelected(); }; // 双击等价回车（族条目钻入/返回行钻出同分派）
+        _listBox.PreviewMouseLeftButtonDown += (_, e) =>
         {
             if (_zone == FocusZone.Buttons)
             {
                 EnterListZone(); // 鼠标点行即回列表区——否则按钮区残留，Enter 会派发到按钮而不是点击的行
+            }
+
+            // 点选兜底：容器 Focusable=false（键盘焦点永留输入框）使 WPF 的点选链路失效——
+            // ListBoxItem 按下时靠 Focus() 成功才 NotifyListItemClicked，永远失败 →
+            // 单击不换选中、双击激活的是旧选中行（钻取视图里"双击返回行"就会变成复制样式+收起）。
+            // 这里在预览阶段按命中测试直接选中被点行，不碰键盘焦点；点空白/滚动条（无行命中）不动选中。
+            if (e.OriginalSource is DependencyObject src)
+            {
+                ListBoxItem? container = null;
+                for (DependencyObject? node = src; node is Visual && container is null; node = VisualTreeHelper.GetParent(node))
+                {
+                    container = node as ListBoxItem;
+                }
+
+                if (container?.Content is StyleListItem row && !ReferenceEquals(_listBox.SelectedItem, row))
+                {
+                    _listBox.SelectedItem = row;
+                }
             }
         };
 
@@ -1300,6 +1326,7 @@ internal sealed class MainWindow : Window
 
     private void OnDeactivated(object? sender, EventArgs e)
     {
+        LogDiag("window: deactivated");
         // 失焦即藏。仅在被激活过之后才生效：Windows 前台锁定时 Show 可能拿不到激活，
         // 若一显示就 Deactivated 会把弹窗"闪没"。
         if (_activatedSinceShown)
@@ -1715,6 +1742,7 @@ internal sealed class MainWindow : Window
                 }
                 else
                 {
+                    LogDiag("hide: escape");
                     HideAndScheduleTrim();
                 }
 
@@ -1816,12 +1844,15 @@ internal sealed class MainWindow : Window
         switch (_listBox.SelectedItem)
         {
             case StyleListItem { Kind: StyleListItem.KindFamily, FamilyKey: { } family }:
+                LogDiag($"activate: family {family} -> drill-in");
                 DrillIn(family);
                 return true;
             case StyleListItem { Kind: StyleListItem.KindBack }:
+                LogDiag("activate: back-row -> drill-out");
                 DrillOut();
                 return true;
             default:
+                LogDiag($"activate: style-row {_listBox.SelectedItem}");
                 return CommitSelected();
         }
     }
@@ -1834,23 +1865,27 @@ internal sealed class MainWindow : Window
             return false;
         }
 
+        LogDiag($"commit: style={selected.StyleId} inputLen={_inputBox.Text.Length}");
         // 复制时才对全文做完整转换（预览只转换了前 64 个字素）
         string result;
         try
         {
             result = style.Transform(_inputBox.Text);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            LogDiag($"commit: transform failed {ex.GetType().Name}");
             return false; // 单样式失败静默放弃，不打断使用
         }
 
         if (string.IsNullOrEmpty(result) || !TryCopyToClipboard(result))
         {
+            LogDiag($"commit: copy failed (resultLen={result.Length})");
             _statusCount.Text = Loc.S(Lang, "剪贴板写入失败，可再按 Enter 重试", "Clipboard write failed; press Enter to retry");
             return false; // 复制失败保持窗口打开，便于重试
         }
 
+        LogDiag("commit: copied -> hide");
         _usage.RecordUse(selected.StyleId);
 
         _copyTimer.Stop();
