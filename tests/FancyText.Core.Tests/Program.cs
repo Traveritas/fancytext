@@ -26,6 +26,13 @@ public static class Program
             return 0;
         }
 
+        if (args.Contains("audit"))
+        {
+            return RunDupeAudit(args
+                .Where(a => !a.StartsWith("--", StringComparison.Ordinal) && !string.Equals(a, "audit", StringComparison.Ordinal))
+                .ToList());
+        }
+
         // 密闭环境：整个测试期把包目录与状态文件指到临时目录——
         // 否则会扫到本机真实 %LOCALAPPDATA%\FancyText\styles 里用户已安装的包，结果随机器状态漂移
         var hermeticDir = Path.Combine(Path.GetTempPath(), "fancytext-tests-" + Path.GetRandomFileName());
@@ -134,6 +141,147 @@ public static class Program
             Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(a => a != "demo") is { Length: > 0 } custom
                 ? custom
                 : StyleCatalog.DefaultSample;
+    }
+
+    /// <summary>
+    /// 重复审计（收录标准执法工具）：按「步骤管道签名」分组比对 内置 + 内嵌官方包 + 命令行传入的包文件。
+    /// 报两类问题：签名完全相同的 [DUP]；mapReplace 映射是某内置表子集的 [SUBSET]。发现即返回 1（可接 CI）。
+    /// </summary>
+    private static int RunDupeAudit(List<string> packFiles)
+    {
+        // 与 KnownTransforms.ResolveMap 的 switch 名单保持同步
+        string[] knownMaps =
+        [
+            "bold", "italic", "bold-italic", "script", "bold-script", "fraktur", "bold-fraktur", "double-struck",
+            "monospace", "sans", "sans-bold", "sans-italic", "sans-bold-italic", "circled", "circled-negative",
+            "squared", "squared-negative", "parenthesized", "regional-indicator", "fullwidth", "small-caps",
+            "superscript", "subscript", "currency", "symbols-mix", "leet", "upside-down", "mirror",
+            "morse", "braille", "digits-circled-sans", "digits-double-circled", "cyrillic-lookalike", "martian", "martian-reverse",
+        ];
+
+        // 密闭环境：只审 内置 + 内嵌 + 传入文件，不受本机已装包影响
+        var dir = Path.Combine(Path.GetTempPath(), "fancytext-audit-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(dir);
+        var prev = StylePacks.DirectoryOverrideForTests;
+        StylePacks.DirectoryOverrideForTests = dir;
+        var problems = 0;
+        try
+        {
+            var items = new List<(string Source, StyleDefinition Def)>();
+            foreach (var s in StyleCatalog.All.Where(s => s.Source is null or StyleSource.BuiltIn))
+            {
+                items.Add(("内置", s.Definition!));
+            }
+
+            foreach (var p in StylePacks.LoadBundled())
+            {
+                foreach (var s in p.Styles)
+                {
+                    items.Add(($"内嵌:{p.PackName}", s.Definition!));
+                }
+            }
+
+            foreach (var file in packFiles)
+            {
+                var parsed = StylePacks.ParseFile(file);
+                if (parsed.Pack is null)
+                {
+                    Console.WriteLine($"[SKIP] {file}: {string.Join("; ", parsed.Errors)}");
+                    continue;
+                }
+
+                foreach (var d in parsed.Pack.Styles)
+                {
+                    items.Add(($"文件:{parsed.Pack.Name}", d));
+                }
+            }
+
+            Console.WriteLine($"审计 {items.Count} 个样式（内置 + 内嵌 + {packFiles.Count} 个文件）");
+
+            // 1) 签名完全相同
+            foreach (var group in items.GroupBy(i => Signature(i.Def)).Where(g => g.Count() > 1))
+            {
+                problems++;
+                Console.WriteLine($"\n[DUP] {group.Key}");
+                foreach (var (source, def) in group)
+                {
+                    Console.WriteLine($"    {source,-12} {def.Id}");
+                }
+            }
+
+            // 2) mapReplace 是某内置表子集（同一映射可用 useMap 得到，包内手写即重复）
+            foreach (var (source, def) in items)
+            {
+                foreach (var step in def.Steps)
+                {
+                    if (step is not MapReplaceStep map)
+                    {
+                        continue;
+                    }
+
+                    foreach (var name in knownMaps)
+                    {
+                        IReadOnlyDictionary<char, string> table;
+                        try
+                        {
+                            table = KnownTransforms.ResolveMap(name);
+                        }
+                        catch (ArgumentException)
+                        {
+                            continue;
+                        }
+
+                        var hits = 0;
+                        foreach (var (key, value) in map.Map)
+                        {
+                            if (table.TryGetValue(key, out var builtIn) && builtIn == value)
+                            {
+                                hits++;
+                            }
+                        }
+
+                        if (hits == map.Map.Count && hits > 0)
+                        {
+                            problems++;
+                            Console.WriteLine($"\n[SUBSET] {source,-12} {def.Id} 的 mapReplace 全部 {hits} 条 ⊆ 内置表 {name}（用 useMap 即可）");
+                        }
+                    }
+                }
+            }
+
+            Console.WriteLine(problems == 0 ? "\n审计通过：无重复" : $"\n发现 {problems} 处重复");
+        }
+        finally
+        {
+            StylePacks.DirectoryOverrideForTests = prev;
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        return problems == 0 ? 0 : 1;
+
+        static string Signature(StyleDefinition d) => string.Join("→", d.Steps.Select(StepSig));
+
+        static string StepSig(TransformStep s) => s switch
+        {
+            MapReplaceStep m => $"mapReplace[{string.Join(",", m.Map.OrderBy(kv => kv.Key).Select(kv => $"{Esc(kv.Key.ToString())}={Esc(kv.Value)}"))}]",
+            UseMapStep u => $"useMap({u.MapName})",
+            AppendMarkStep a => $"appendMark({Esc(a.Mark)}x{a.Repeat})",
+            WrapStringStep w => $"wrapString({Esc(w.Prefix)}|{Esc(w.Suffix)})",
+            WrapEachStep w => $"wrapEach({Esc(w.Prefix)}|{Esc(w.Suffix)})",
+            SpacingStep sp => $"spacing({Esc(sp.Separator)})",
+            ReverseStep => "reverse",
+            AlgorithmStep al => $"algorithm({al.Algorithm})",
+            IfChangedStep g => $"ifChanged({StepSig(g.Inner)})",
+            _ => s.GetType().Name,
+        };
+
+        static string Esc(string s) => string.Concat(s.Select(c => $"U+{(int)c:X4}"));
     }
 
     /// <summary>引擎分配/耗时基准：N 次全目录转换 64 字输入，观察托管内存与 GC 次数。</summary>
@@ -790,7 +938,7 @@ public static class Program
                  {
                      "starry-day-night", "starry-glow", "starry-each-star", "starry-mark-double-dot", "starry-night-combo",
                      "mark-sweat", "mark-juhua-double", "mark-juhua-triple", "mark-strike-under",
-                     "mars-reverse", "mars-reverse-plain", "mars-star",
+                     "mars-reverse", "mars-reverse-plain", "mars-star", "deco-digits-negative",
                  })
         {
             Check(!bundledStyles.ContainsKey(removed), $"重复样式未收录：{removed}");
