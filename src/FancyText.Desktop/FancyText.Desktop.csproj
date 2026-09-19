@@ -13,7 +13,9 @@
     <LangVersion>latest</LangVersion>
     <Company>FancyText</Company>
     <Product>花式文字桌面版</Product>
-    <Version>1.5.0</Version>
+    <Version>1.5.1</Version>
+    <!-- 自包含单文件曾把 13 种框架语言资源全捆进 exe；只保留实际需要的（中英），实测省约 15MB -->
+    <SatelliteResourceLanguages>zh-Hans;zh-Hant;en</SatelliteResourceLanguages>
     <!-- exe/任务栏图标：多尺寸 PNG 帧 ico，由 tools/build-icon.ps1 从 docs/brand 主图生成 -->
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>

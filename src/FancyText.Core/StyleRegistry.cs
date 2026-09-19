@@ -122,26 +122,22 @@ public static class StyleRegistry
                     continue;
                 }
 
-                // 必要字段缺失（id/packName/downloadUrl）跳过该条，不拖累整表
+                // 必要字段缺失（id/packName/downloadUrl）跳过该条，不拖累整表；只接受 HTTPS 直链
                 if (!TryGetString(item, "packName", out var packName)
                     || !TryGetString(item, "downloadUrl", out var downloadUrl)
-                    || !TryGetString(item, "id", out var id))
+                    || !TryGetString(item, "id", out var id)
+                    || !downloadUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
 
-                if (!downloadUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue; // 只接受 HTTPS 直链
-                }
-
-                TryGetString(item, "mirrorUrl", out var mirrorUrl);
-                TryGetString(item, "description", out var description);
-                TryGetString(item, "author", out var author);
+                var hasMirror = TryGetString(item, "mirrorUrl", out var mirrorUrl);
+                var hasDescription = TryGetString(item, "description", out var description);
+                var hasAuthor = TryGetString(item, "author", out var author);
                 item.TryGetProperty("official", out var officialEl);
                 result.Add(new RegistryPackEntry(
-                    id, packName, description ?? string.Empty, author,
-                    officialEl.ValueKind == JsonValueKind.True, downloadUrl, mirrorUrl));
+                    id, packName, hasDescription ? description : string.Empty, hasAuthor ? author : null,
+                    officialEl.ValueKind == JsonValueKind.True, downloadUrl, hasMirror ? mirrorUrl : null));
             }
 
             packs = result;
@@ -174,12 +170,17 @@ public static class StyleRegistry
         return RegistryResult<string>.Fail($"网络获取失败（{string.Join("；", errors)}）");
     }
 
-    private static bool TryGetString(JsonElement parent, string name, out string? value)
+    private static bool TryGetString(JsonElement parent, string name, out string value)
     {
-        value = null;
-        return parent.TryGetProperty(name, out var el)
+        value = string.Empty;
+        if (parent.TryGetProperty(name, out var el)
             && el.ValueKind == JsonValueKind.String
-            && !string.IsNullOrWhiteSpace(el.GetString())
-            && (value = el.GetString()) is not null;
+            && el.GetString() is { Length: > 0 } text)
+        {
+            value = text;
+            return true;
+        }
+
+        return false;
     }
 }

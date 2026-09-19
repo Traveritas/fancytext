@@ -43,7 +43,8 @@ dotnet publish src/FancyText.Desktop -c Release -r win-x64 --self-contained true
 - **管理**：设置页样式包面板——每包可**停用/启用**（停用不删文件，样式即时从目录隐藏，三端一致）、卸载（损坏的包标红且只能卸载）、展开查看包内样式与当前文本的实时预览；`fancy --packs`（停用包有标记）/ `fancy --remove 包名`。
 - 桌面版导入/卸载/停启用即时生效；命令面板插件在面板进程重启后生效。列表中包样式的分类后会标注来源包名。
 - **安全校验**：ID 冲突（内置/其它包）拒绝导入；孤立代理对、控制字符、超限参数（映射条数/步骤数/文件大小 2MB）一律拦截。
-- 包格式与全部步骤写法（mapReplace / useMap / appendMark / wrapString / wrapEach / spacing / reverse / algorithm / ifChanged 守卫）见可直接导入体验的 [docs/sample-pack.json](docs/sample-pack.json)；样式可带可选 `nameEn` / `noteEn` 双语字段，英文名缺失时回退 `name`。
+- 包格式、全部步骤写法与官方收录标准见 [docs/样式包规范.md](docs/样式包规范.md)（附可直接导入体验的 [docs/sample-pack.json](docs/sample-pack.json)）；样式可带可选 `nameEn` / `noteEn` 双语字段，英文名缺失时回退 `name`；`category` 支持 6 个内置类之外的**自定义类别**（界面原样显示）。
+- **在线获取**：设置 → 样式包 → 获取更多样式包，一键安装 [fancytext-styles 索引仓库](https://github.com/Traveritas/fancytext-styles) 里的包（raw 主通道 + jsDelivr 镜像回退）；社区可向该仓库 PR 上架新包；CLI：`fancy --online` / `fancy --online-install <id>`。
 
 ### 样式分类（130 个）
 

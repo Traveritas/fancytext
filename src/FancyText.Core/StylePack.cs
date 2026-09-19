@@ -4,7 +4,7 @@ namespace FancyText.Core;
 
 /// <summary>
 /// 样式包：可分享的样式集合文件（%LOCALAPPDATA%\FancyText\styles\*.json，一文件一包）。
-/// 纯数据（声明式步骤），不含可执行逻辑；格式见 docs 样式包规范。
+/// 纯数据（声明式步骤），不含可执行逻辑；格式见 docs/样式包规范.md（本注释所指的规范文档）。
 /// </summary>
 public sealed record StylePack
 {
