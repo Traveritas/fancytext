@@ -508,6 +508,21 @@ public static class StylePacks
 
         foreach (var file in Directory.EnumerateFiles(ActiveDirectory, "*.json"))
         {
+            // 退役官方包清理：文件名命中即删（样式已由内置接管），删除失败则本次跳过不加载
+            if (RetiredOfficialPackFiles.Contains(Path.GetFileName(file)))
+            {
+                try
+                {
+                    File.Delete(file);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    result.Add(new InstalledPack(Path.GetFileNameWithoutExtension(file), file, [], "退役官方包清理失败（文件被占用）"));
+                }
+
+                continue;
+            }
+
             var parsed = ParseFile(file);
             if (parsed.Pack is null)
             {
@@ -767,4 +782,14 @@ public static class StylePacks
         ["颜文字情绪扩充"] = "颜文字",
         ["火星文非主流扩充"] = "火星文",
     };
+
+    /// <summary>
+    /// 已退役的官方包安装文件名（曾经内嵌/在线发布，后并入内置或移除）：
+    /// 扫描时顺带删除（样式已由内置接管、ID 沿用），删除失败则本次跳过等待下次。
+    /// </summary>
+    private static readonly HashSet<string> RetiredOfficialPackFiles =
+    [
+        ToPackFileName("火星文非主流扩充"),
+        ToPackFileName("火星文"),
+    ];
 }

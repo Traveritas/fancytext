@@ -593,6 +593,15 @@ public static class Program
             Check(StylePacks.Remove("测试包"), "卸载成功");
             StyleCatalog.Reload();
             Check(StyleCatalog.All.All(s => s.Id != "test-caesar"), "卸载后 Reload 移除包样式");
+
+            // 退役官方包清理：火星文包（正反向/去装饰均已内置），扫描时自动删除安装文件
+            File.WriteAllText(Path.Combine(tempDir, "火星文.json"),
+                """{"schemaVersion":1,"name":"火星文","styles":[{"id":"mars-reverse","name":"旧包样式","category":"chinese","steps":[{"op":"reverse"}]}]}""");
+            File.WriteAllText(Path.Combine(tempDir, "火星文非主流扩充.json"), """{"schemaVersion":1,"name":"火星文非主流扩充","styles":[{"id":"mars-old","name":"更旧","category":"chinese","steps":[{"op":"reverse"}]}]}""");
+            var retiredScan = StylePacks.LoadInstalled();
+            Check(retiredScan.All(p => p.PackName != "火星文" && p.PackName != "火星文非主流扩充"), "退役官方包不再加载");
+            Check(!File.Exists(Path.Combine(tempDir, "火星文.json")) && !File.Exists(Path.Combine(tempDir, "火星文非主流扩充.json")),
+                "退役官方包安装文件被自动清除");
         }
         finally
         {
@@ -759,12 +768,12 @@ public static class Program
         // 内嵌官方包已落地（deco-wings-pack.json）：枚举非空且逐个解析健康（glob 暂缺时回退为空）
         Check(StylePacks.LoadBundled().All(p => p.Styles.Count > 0 && !string.IsNullOrEmpty(p.PackName)), "Core 程序集 LoadBundled 解析健康");
 
-        // 官方包矩阵：deco-wings + 星月夜 / 叠加特效 / 颜文字 / 火星文，共 5 个
+        // 官方包矩阵：deco-wings + 星月夜 / 叠加特效 / 颜文字，共 4 个（火星文包已退役——正向/还原/去装饰全部内置）
         var coreBundled = StylePacks.LoadBundled();
-        Check(coreBundled.Count == 5, "Core 内嵌官方包共 5 个", $"实际 {coreBundled.Count} 个");
+        Check(coreBundled.Count == 4, "Core 内嵌官方包共 4 个", $"实际 {coreBundled.Count} 个");
         Check(coreBundled.Select(p => p.PackName).OrderBy(n => n, StringComparer.Ordinal).SequenceEqual(
-            new[] { "叠加特效", "星月夜", "火星文", "华丽装饰", "颜文字" }
-                .OrderBy(n => n, StringComparer.Ordinal)), "官方包名单齐整（无「扩充」后缀）");
+            new[] { "叠加特效", "星月夜", "华丽装饰", "颜文字" }
+                .OrderBy(n => n, StringComparer.Ordinal)), "官方包名单齐整（火星文已退役）");
         Check(coreBundled.All(p => p.Styles.All(s => !string.IsNullOrEmpty(s.NameEn) && !string.IsNullOrEmpty(s.NoteEn))),
             "官方包样式双语齐备（nameEn/noteEn）");
         var builtInIds = StyleCatalog.BuiltInIds.ToHashSet(StringComparer.Ordinal);
@@ -776,21 +785,18 @@ public static class Program
         Check(bundledStyles["kao-joy-smile"].Transform("你好") == "你好 (´ω｀)", "颜文字后缀");
         Check(bundledStyles["mark-tiny-a"].Transform("a") == "a\u0363", "头顶小字母 a");
         Check(bundledStyles["kao-words-happy"].Transform("爱笑") == "(｡♡‿♡｡)(´ω｀)", "情绪字映射");
-        // 按用户标准移除的重复样式不得回归：与内置同款（✦☾/✧･ﾟ/逐字星/双星点）、可两步组合（组合管道/力度档/删+划）
+        // 按用户标准移除的重复样式不得回归：与内置同款（✦☾/✧･ﾟ/逐字星/双星点/火星文全家族）、可两步组合（组合管道/力度档/删+划）
         foreach (var removed in new[]
                  {
                      "starry-day-night", "starry-glow", "starry-each-star", "starry-mark-double-dot", "starry-night-combo",
                      "mark-sweat", "mark-juhua-double", "mark-juhua-triple", "mark-strike-under",
+                     "mars-reverse", "mars-reverse-plain", "mars-star",
                  })
         {
             Check(!bundledStyles.ContainsKey(removed), $"重复样式未收录：{removed}");
         }
-        var martianPair = MartianDictionary.Map.First(kv => kv.Value.Length == 1 && kv.Value[0] != kv.Key);
-        Check(bundledStyles["mars-reverse"].Transform(martianPair.Value) == martianPair.Key.ToString(), "火星文解药还原");
-        Check(bundledStyles.TryGetValue("mars-star", out _) == false, "火星文组合样式已按用户反馈移除");
         Check(bundledStyles["kao-joy-smile"].Category == TextStyleCategory.Custom
             && bundledStyles["kao-joy-smile"].CustomCategoryName == "颜文字", "官方包自定义类别（颜文字）");
-        Check(bundledStyles["mars-reverse"].Category == TextStyleCategory.Chinese, "火星文解药归中文类");
         Check(StyleFamilies.GetFamilyKey(bundledStyles["kao-joy-smile"]) is null, "自定义类别的包样式不聚族（平铺）");
 
         var tempDir = Path.Combine(Path.GetTempPath(), "fancytext-bundled-test-" + Path.GetRandomFileName());
