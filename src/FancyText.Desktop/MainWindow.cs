@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -1215,19 +1216,8 @@ internal sealed class MainWindow : Window
     /// <summary>预填剪贴板文本并全选；剪贴板为空/被占用/非文本则用内置示例。</summary>
     private void SeedInputFromClipboard()
     {
-        var text = string.Empty;
-        try
-        {
-            if (System.Windows.Clipboard.ContainsText())
-            {
-                text = System.Windows.Clipboard.GetText();
-            }
-        }
-        catch (Exception)
-        {
-            // 剪贴板被其它进程短暂占用时用默认示例
-        }
-
+        // 原生读取：被占用时如实失败但不抛异常，退回内置示例（见 Win32Clipboard 注释）
+        var text = Win32Clipboard.ContainsText() ? Win32Clipboard.TryGetText(out _) : null;
         _inputBox.Text = string.IsNullOrWhiteSpace(text) ? StyleCatalog.DefaultSample : text;
     }
 
@@ -1911,23 +1901,26 @@ internal sealed class MainWindow : Window
         return true;
     }
 
-    /// <summary>写入剪贴板：剪贴板可能被其它进程短暂占用，重试 3 次、间隔 100ms。Flush 让数据在本进程退出后仍可粘贴。</summary>
+    /// <summary>写入剪贴板：剪贴板可能被其它进程短暂占用，重试 3 次、间隔 100ms。
+    /// 走原生 Win32（Win32Clipboard）而非 WPF Clipboard.SetText+Flush——后者的 OLE 通路会周期性卡死：
+    /// 每次自旋约 0.9s 抛 CLIPBRD_E_CANT_OPEN（3 次重试即日志里 2.9s 的"卡一下"），而数据其实已延迟
+    /// 写进剪贴板、界面却报"写入失败"的假失败；同进程交替实测原生路径同时刻全部成功，且写入即静态数据
+    /// （本进程退出后照样可粘贴，无需 Flush）。</summary>
     private static bool TryCopyToClipboard(string text)
     {
         for (var attempt = 1; attempt <= 3; attempt++)
         {
-            try
+            var watch = Stopwatch.StartNew();
+            if (Win32Clipboard.TrySetText(text, out var reason))
             {
-                System.Windows.Clipboard.SetText(text);
-                System.Windows.Clipboard.Flush();
+                LogDiag($"commit: copy ok ({watch.ElapsedMilliseconds}ms, attempt {attempt})");
                 return true;
             }
-            catch (Exception)
+
+            LogDiag($"commit: copy attempt {attempt}/3 failed ({reason}, {watch.ElapsedMilliseconds}ms)");
+            if (attempt < 3)
             {
-                if (attempt < 3)
-                {
-                    Thread.Sleep(100);
-                }
+                Thread.Sleep(100);
             }
         }
 

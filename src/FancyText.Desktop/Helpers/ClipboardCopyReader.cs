@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Windows;
 using System.Windows.Threading;
 
 namespace FancyText.Desktop.Helpers;
@@ -9,6 +8,7 @@ namespace FancyText.Desktop.Helpers;
 /// 「预填兼容模式」兜底：UIA 拿不到选中文字时，向目标应用发送 Ctrl+Insert（经典复制键）读取选中，
 /// 读取后立即还原剪贴板。必须在唤出窗口之前、UI 线程上调用（此刻目标应用仍持有前台；等待期靠
 /// 泵消息放行剪贴板所有权握手，见 TryRead 内注释）。
+/// 备份/清空/读取/还原全部走原生 Win32（Win32Clipboard）——OLE 通路会周期性卡死（见该类注释）。
 /// 用 Ctrl+Insert 而非 Ctrl+C：后者在终端里是 SIGINT 中断信号，会打断前台进程。
 /// </summary>
 internal static class ClipboardCopyReader
@@ -23,26 +23,16 @@ internal static class ClipboardCopyReader
     public static string? TryRead(out string reason)
     {
         reason = "剪贴板无文本";
-        // 只备份文本：GetDataObject 拿到的 OLE 包装对象回设后会读取出错（CLIPBRD_E_BAD_DATA，实测）。
-        // 纯文本走 CF_UNICODETEXT 往返最稳；非文本内容（图片/文件）无法保真还原，属已知限制。
+        // 只备份文本：原生写入也只落 CF_UNICODETEXT，非文本内容（图片/文件）无法保真还原，属已知限制。
         string? backupText = null;
-        var backupOk = true;
-        try
+        if (Win32Clipboard.ContainsText())
         {
-            if (Clipboard.ContainsText())
+            backupText = Win32Clipboard.TryGetText(out _);
+            if (backupText is null)
             {
-                backupText = Clipboard.GetText();
+                reason = "剪贴板被占用，放弃读取"; // 有文本格式却读不出来：与"原本无文本"必须区分（否则既误填又毁数据）
+                return null;
             }
-        }
-        catch (Exception)
-        {
-            backupOk = false; // 剪贴板被其它进程占用：与"原本无文本"必须区分（否则既误填又毁数据）
-        }
-
-        if (!backupOk)
-        {
-            reason = "剪贴板被占用，放弃读取";
-            return null;
         }
 
         // 备份后先清空再注入：剪贴板里若已躺着同一段文字（比如刚复制过、或上次尝试迟到的复制），
@@ -50,11 +40,7 @@ internal static class ClipboardCopyReader
         // 任何文本都只能来自这次复制。无文本时不清：剪贴板可能持有图片/文件等无法还原的内容。
         if (backupText is not null)
         {
-            try
-            {
-                Clipboard.Clear();
-            }
-            catch (Exception)
+            if (!Win32Clipboard.TryClear(out _))
             {
                 reason = "剪贴板清空失败，放弃读取";
                 return null;
@@ -70,9 +56,10 @@ internal static class ClipboardCopyReader
         }
 
         // 轮询剪贴板序列号变化（而非固定 Sleep）：快时更快，慢目标也不会在还原后被"迟到的复制"覆盖。
-        // 等待必须在泵消息中进行：剪贴板所有权握手是发给本线程（STA）的同步消息——目标应用执行复制时
-        // 要先逐出旧所有者（上次的还原 SetText 让本进程成了所有者），不泵消息对方就被无限期挂死，
-        // 序列号永不变化，成功的复制被误判成超时（实测阻塞等待 746ms 假超时，泵消息后 31ms 完成）。
+        // 等待在泵消息中进行：早期 OLE 通路下，还原写入会让本进程成为延迟渲染所有者，目标应用复制时
+        // 要先逐出我们（对本线程投递同步消息），不泵消息对方被无限期挂死、成功复制被误判成超时
+        // （实测阻塞等待 746ms 假超时，泵消息后 31ms 完成）；还原改走原生静态写入后该握手已不存在，
+        // 但泵消息保留——等待期让消息循环继续转动成本可忽略，且防住等待期发给本线程的其它消息。
         // 墙钟计时：Thread.Sleep(15) 的实际耗时被进程计时器分辨率放大，按次数算预算会漂到 1.7s。
         var copied = false;
         var wait = Stopwatch.StartNew();
@@ -105,24 +92,21 @@ internal static class ClipboardCopyReader
         string? text = null;
         if (copied)
         {
-            try
+            if (Win32Clipboard.ContainsText())
             {
-                if (Clipboard.ContainsText())
+                text = Win32Clipboard.TryGetText(out var getReason);
+                if (text is null)
                 {
-                    text = Clipboard.GetText();
-                    if (string.IsNullOrWhiteSpace(text))
-                    {
-                        reason = "目标复制出的是空文本";
-                    }
+                    reason = $"剪贴板读取失败（{getReason}）";
                 }
-                else
+                else if (string.IsNullOrWhiteSpace(text))
                 {
-                    reason = "目标复制出的内容不含文本";
+                    reason = "目标复制出的是空文本";
                 }
             }
-            catch (Exception ex)
+            else
             {
-                reason = $"剪贴板读取异常 {ex.GetType().Name}";
+                reason = "目标复制出的内容不含文本";
             }
         }
         else
@@ -148,23 +132,17 @@ internal static class ClipboardCopyReader
     }
 
     /// <summary>还原剪贴板（"不动剪贴板"的承诺只对最终状态负责）。changed=false 且原本无文本时
-    /// 什么都不做：剪贴板没被动过，可能持有无法备份还原的图片/文件，动它反而毁数据。</summary>
+    /// 什么都不做：剪贴板没被动过，可能持有无法备份还原的图片/文件，动它反而毁数据。
+    /// 原生接口不抛异常，失败静默：还原失败不阻塞预填（用户剪贴板会残留这次复制的内容）。</summary>
     private static void Restore(string? backupText, bool changed)
     {
-        try
+        if (backupText is not null)
         {
-            if (backupText is not null)
-            {
-                Clipboard.SetText(backupText); // 我们清空过（或被复制顶掉过），还原备份文本
-            }
-            else if (changed)
-            {
-                Clipboard.Clear(); // 复制发生了且原本无文本可还原：清掉这次复制，恢复原状
-            }
+            Win32Clipboard.TrySetText(backupText, out _); // 我们清空过（或被复制顶掉过），还原备份文本
         }
-        catch (Exception)
+        else if (changed)
         {
-            // 还原失败不阻塞预填（用户剪贴板会残留这次复制的内容）
+            Win32Clipboard.TryClear(out _); // 复制发生了且原本无文本可还原：清掉这次复制，恢复原状
         }
     }
 
