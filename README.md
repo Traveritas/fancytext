@@ -194,7 +194,5 @@ Export-PfxCertificate -Cert $cert -FilePath src\FancyText.CmdPal\FancyText.DevKe
 
 ## 许可
 
-- 本项目代码：MIT（见 [LICENSE](LICENSE)）
-- 火星文字典数据：来自 [cnchar](https://github.com/theajack/cnchar)（MIT）
-- 简⇄繁词典：来自 [OpenCC](https://github.com/BYVoid/OpenCC)（Apache-2.0）
-- 拼音数据：来自 [mozillazg/pinyin-data](https://github.com/mozillazg/pinyin-data)（MIT）
+- **本项目代码**：MIT，见 [LICENSE](LICENSE)（版权人 Traveritas）
+- **第三方组件与内嵌词典数据**：完整清单、版本与许可全文见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)——含 .NET 运行时（MIT）、Command Palette SDK / CsWinRT / WinRTServer（MIT）、Windows App SDK（微软软件许可条款，允许随应用再分发）、[cnchar](https://github.com/theajack/cnchar) 火星文字典（MIT）、[OpenCC](https://github.com/BYVoid/OpenCC) 简⇄繁词表（Apache-2.0）、[mozillazg/pinyin-data](https://github.com/mozillazg/pinyin-data) 拼音数据（MIT；其中源自 Unihan 的部分适用 Unicode 许可）

@@ -24,6 +24,12 @@ if ($LASTEXITCODE -ne 0) { throw 'publish failed' }
 # pdb 是调试符号，分发不需要（白占体积）
 Get-ChildItem $stage -Filter *.pdb | Remove-Item -Force
 
+# 许可与第三方声明必须随二进制分发（MIT 要求随副本携带版权与许可声明；
+# 自包含 exe 内含 MIT 的 .NET 运行时，内嵌词典含 Apache-2.0 的 OpenCC 词表）
+foreach ($doc in 'LICENSE', 'THIRD-PARTY-NOTICES.md') {
+    Copy-Item (Join-Path $root $doc) $stage -Force
+}
+
 $readme = @"
 花式文字 桌面版 v$version
 ======================
@@ -55,6 +61,8 @@ $readme = @"
 - 绿色软件：单文件、免安装。配置在 %LOCALAPPDATA%\FancyText\
   （desktop.json 设置 / state.json 收藏与最近 / diag.log 诊断日志）。
 - 卸载：托盘退出后删除 exe 即可；若开过"开机自启动"，先在设置里关掉。
+- 许可：本项目代码 MIT（LICENSE）；第三方组件与内嵌词典数据（.NET 运行时、cnchar、
+  OpenCC、pinyin-data）的许可与版权声明见 THIRD-PARTY-NOTICES.md。
 - 姊妹项目：PowerToys Command Palette 插件版（另附），收藏数据互通。
 "@
 

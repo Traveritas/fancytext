@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 FancyText contributors
+Copyright (c) 2026 Traveritas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,8 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-本项目的火星文字典数据（src/FancyText.Core/Resources/spark-simple.json）
-来自 cnchar 项目（https://github.com/theajack/cnchar），同样以 MIT 许可发布。

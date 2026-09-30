@@ -5,5 +5,12 @@
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisMode>Recommended</AnalysisMode>
     <NuGetAuditMode>direct</NuGetAuditMode>
+
+    <!-- 许可与仓库元数据（NuGet 包元数据、WinGet/商店清单都取这里；版权人与 LICENSE 保持一致） -->
+    <Authors>Traveritas</Authors>
+    <Copyright>Copyright (c) 2026 Traveritas</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/Traveritas/fancytext</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/Traveritas/fancytext</PackageProjectUrl>
   </PropertyGroup>
 </Project>
