@@ -2,10 +2,14 @@
 # level; reported bug: the window exits (hides) instead.
 # Flow per run: start exe -> hotkey summon -> find first family row (meta ends U+25B8)
 # -> walk selection there with {DOWN} -> {ENTER} to drill in -> assert Back row
-# (preview U+2039) at top -> REAL mouse double-click on it -> classify outcome:
+# (preview U+2039) at top -> REAL mouse double-click ON THE GLYPH -> classify outcome:
 #   window hidden + clipboard changed => copy path (CommitSelected -> HideAfterCopy)
 #   window hidden + clipboard same   => deactivate/hide path
 #   window visible + family rows back => OK (no bug)
+# NOTE: the click point MUST be on the glyph (x+2 from the preview text rect left edge).
+# Clicking the blank area right of the text is NOT a valid test: the row-selection
+# hit-test fallback used to fail on glyph clicks only (OriginalSource is a Run, not a
+# Visual), so a blank-area click passes even with the bug present.
 # Requires desktop.json with prefillClipboard=false, prefillSelection=false, default hotkey.
 # Usage: powershell -NoProfile -File verify-backrow.ps1 -ExePath <FancyText.Desktop.exe>
 param([Parameter(Mandatory = $true)][string]$ExePath)
@@ -57,23 +61,19 @@ function Get-Rows($list) {
       [System.Windows.Automation.AutomationElement]::ClassNameProperty, 'ListBoxItem')))
 }
 
-function Row-Text($item, [string]$automationId) {
-  $tb = $item.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+function Row-El($item, [string]$automationId) {
+  return $item.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
     (New-Object System.Windows.Automation.PropertyCondition(
       [System.Windows.Automation.AutomationElement]::AutomationIdProperty, $automationId)))
+}
+
+function Row-Text($item, [string]$automationId) {
+  $tb = Row-El $item $automationId
   if ($tb) { return $tb.Current.Name }
   return $null
 }
 
-function Real-DoubleClick($el) {
-  $x = 0; $y = 0
-  try {
-    $pt = $el.GetClickablePoint()
-    $x = [int]$pt.X; $y = [int]$pt.Y
-  } catch {
-    $r = $el.Current.BoundingRectangle
-    $x = [int]($r.X + $r.Width / 2); $y = [int]($r.Y + $r.Height / 2)
-  }
+function Real-DoubleClick([int]$x, [int]$y) {
   [WB]::SetCursorPos($x, $y) | Out-Null
   Start-Sleep -Milliseconds 80
   [WB]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)   # LEFTDOWN
@@ -146,7 +146,12 @@ try {
   if ($backPrev -ne ([string][char]0x2039)) { throw "first row is not Back (preview='$backPrev')" }
   "drill view open: $($rows.Count) rows, Back row on top"
 
-  Real-DoubleClick $rows[0]
+  # double-click ON THE GLYPH (x+2 from the preview text rect left edge); see header note
+  $backPreview = Row-El $rows[0] 'Preview'
+  $pr = $backPreview.Current.BoundingRectangle
+  $gx = [int]($pr.X + 2); $gy = [int]($pr.Y + $pr.Height / 2)
+  "double-click ON GLYPH at ($gx,$gy); preview rect=($([int]$pr.X),$([int]$pr.Y) w=$([int]$pr.Width) h=$([int]$pr.Height))"
+  Real-DoubleClick $gx $gy
   Start-Sleep -Milliseconds 1200
 
   # classify outcome

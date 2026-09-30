@@ -588,7 +588,18 @@ internal sealed class MainWindow : Window
             FocusVisualStyle = null, // 键盘导航已有选中覆盖层，关掉 WPF 默认的整框虚线焦点矩形
         };
         ScrollViewer.SetHorizontalScrollBarVisibility(_listBox, ScrollBarVisibility.Disabled);
-        _listBox.MouseDoubleClick += (_, _) => { LogDiag("activate: mouse double-click"); ActivateSelected(); }; // 双击等价回车（族条目钻入/返回行钻出同分派）
+        _listBox.MouseDoubleClick += (_, e) =>
+        {
+            LogDiag("activate: mouse double-click");
+            // 双击同样按"鼠标下的行"定位，不假设第一次单击的兜底一定成功：
+            // 单击曾在字形上失效（见 SelectRowUnderSource），导致双击激活的是旧选中行。
+            if (e.OriginalSource is DependencyObject doubleSrc)
+            {
+                SelectRowUnderSource(doubleSrc);
+            }
+
+            ActivateSelected(); // 双击等价回车（族条目钻入/返回行钻出同分派）
+        };
         _listBox.PreviewMouseLeftButtonDown += (_, e) =>
         {
             if (_zone == FocusZone.Buttons)
@@ -602,16 +613,7 @@ internal sealed class MainWindow : Window
             // 这里在预览阶段按命中测试直接选中被点行，不碰键盘焦点；点空白/滚动条（无行命中）不动选中。
             if (e.OriginalSource is DependencyObject src)
             {
-                ListBoxItem? container = null;
-                for (DependencyObject? node = src; node is Visual && container is null; node = VisualTreeHelper.GetParent(node))
-                {
-                    container = node as ListBoxItem;
-                }
-
-                if (container?.Content is StyleListItem row && !ReferenceEquals(_listBox.SelectedItem, row))
-                {
-                    _listBox.SelectedItem = row;
-                }
+                SelectRowUnderSource(src);
             }
         };
 
@@ -1056,6 +1058,38 @@ internal sealed class MainWindow : Window
         style.Setters.Add(new Setter(Control.TemplateProperty, template));
 
         return style;
+    }
+
+    /// <summary>
+    /// 鼠标点选/双击共用的命中测试选中：容器 Focusable=false 让 WPF 内置点选链路失效，
+    /// 鼠标换选中全靠这里。遍历必须 Visual 树与逻辑父混走——点在文字上时 OriginalSource 是
+    /// Run/Span 这类 ContentElement（FrameworkContentElement，非 Visual），只认 Visual 会
+    /// 在第一步就退出，字形点击整片失效（只有点文字旁的空白才生效，"时灵时不灵"的来源）。
+    /// 无行命中（点空白/滚动条）时不动选中。
+    /// </summary>
+    private void SelectRowUnderSource(DependencyObject? source)
+    {
+        ListBoxItem? container = null;
+        for (DependencyObject? node = source; node is not null && container is null; )
+        {
+            if (node is ListBoxItem item)
+            {
+                container = item;
+                break;
+            }
+
+            node = node switch
+            {
+                Visual or System.Windows.Media.Media3D.Visual3D => VisualTreeHelper.GetParent(node),
+                FrameworkContentElement content => content.Parent, // Run/Span → 宿主 TextBlock，再走视觉树
+                _ => null,
+            };
+        }
+
+        if (container?.Content is StyleListItem row && !ReferenceEquals(_listBox.SelectedItem, row))
+        {
+            _listBox.SelectedItem = row;
+        }
     }
 
     // ================================================== 唤出 / 隐藏 ==================================================
