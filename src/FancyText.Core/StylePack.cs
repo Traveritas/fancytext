@@ -28,8 +28,11 @@ public sealed record PackValidationIssue(string StyleId, string Message);
 /// <summary>解析结果：<see cref="Pack"/> 为 null 时 <see cref="Errors"/> 说明原因。</summary>
 public sealed record PackParseResult(StylePack? Pack, IReadOnlyList<string> Errors);
 
-/// <summary>导入结果：Success 时 <see cref="InstalledPath"/> 为安装落盘路径。</summary>
-public sealed record ImportResult(bool Success, string? InstalledPath, IReadOnlyList<string> Errors);
+/// <summary>导入结果：Success 时 <see cref="InstalledPath"/> 为安装落盘路径；<see cref="Warnings"/> 是不阻断安装的提示（覆盖同名包、输出膨胀等）。</summary>
+public sealed record ImportResult(bool Success, string? InstalledPath, IReadOnlyList<string> Errors)
+{
+    public IReadOnlyList<string> Warnings { get; init; } = [];
+}
 
 /// <summary>已安装（或损坏）的包：Error 非空表示该文件解析/编译失败，Styles 为空。</summary>
 public sealed record InstalledPack(string PackName, string FilePath, IReadOnlyList<TextStyle> Styles, string? Error);
@@ -38,7 +41,7 @@ public sealed record InstalledPack(string PackName, string FilePath, IReadOnlyLi
 public sealed record BundledPack(string PackName, string FileName, IReadOnlyList<TextStyle> Styles, string Json);
 
 /// <summary>
-/// 样式包的导入 / 导出 / 安装扫描 / 卸载。三端（插件 / 桌面 / CLI）共用，
+/// 样式包的导入 / 安装扫描 / 卸载。三端（插件 / 桌面 / CLI）共用，
 /// 目录为 <see cref="DefaultPacksDirectory"/>，一文件一包，放文件即生效（进程下次加载）。
 /// </summary>
 public static class StylePacks
@@ -89,10 +92,20 @@ public static class StylePacks
         {
             return new PackParseResult(null, [$"JSON 格式错误：{sourceName}（第 {ex.LineNumber + 1} 行：{ex.Message}）"]);
         }
+        catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException or ArgumentException)
+        {
+            return new PackParseResult(null, [$"包格式错误：{sourceName}（{ex.Message}）"]);
+        }
 
         if (pack is null)
         {
             return new PackParseResult(null, ["包内容为空"]);
+        }
+
+        // JSON 里的 null 元素不会经过转换器，反序列化后直接是 null：先拦掉，后续校验与编译都假定非空
+        if (pack.Styles?.Any(s => s is null || s.Steps is null || s.Steps.Any(HasNullStep)) == true)
+        {
+            return new PackParseResult(null, ["styles / steps 中不能有 null 元素"]);
         }
 
         if (pack.SchemaVersion != StylePack.CurrentSchemaVersion)
@@ -126,6 +139,9 @@ public static class StylePacks
             ? new PackParseResult(null, issues)
             : new PackParseResult(pack, []);
     }
+
+    private static bool HasNullStep(TransformStep? step) =>
+        step is null || (step is IfChangedStep guard && guard.Inner is null);
 
     /// <summary>语义校验：ID 格式与去重、字符串码点健康度（孤立代理/控制字符）、各步骤参数上限、引用白名单。</summary>
     public static IReadOnlyList<PackValidationIssue> Validate(StylePack pack)
@@ -195,7 +211,7 @@ public static class StylePacks
                 mapEntries += step switch
                 {
                     MapReplaceStep map => map.Map.Count,
-                    UseMapStep => 0,
+                    IfChangedStep { Inner: MapReplaceStep map } => map.Map.Count,
                     _ => 0,
                 };
             }
@@ -381,7 +397,38 @@ public static class StylePacks
     /// <summary>导入：解析校验 → 冲突检查 → 落盘到包目录（同包名覆盖升级）。</summary>
     public static ImportResult Import(string filePath)
     {
-        var parsed = ParseFile(filePath);
+        var fileName = Path.GetFileName(filePath);
+        string json;
+        try
+        {
+            if (!File.Exists(filePath))
+            {
+                return new ImportResult(false, null, [$"文件不存在：{fileName}"]);
+            }
+
+            if (new FileInfo(filePath).Length > MaxFileBytes)
+            {
+                return new ImportResult(false, null, [$"文件超过 {MaxFileBytes / 1024} KB 上限：{fileName}"]);
+            }
+
+            json = File.ReadAllText(filePath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new ImportResult(false, null, [$"读取失败：{fileName}（{ex.Message}）"]);
+        }
+
+        return ImportCore(json, fileName, filePath);
+    }
+
+    /// <summary>导入在线/内存中的包 JSON：与文件导入同一套校验，原文落盘（保真分享）。</summary>
+    public static ImportResult ImportJson(string json, string sourceName = "在线包") =>
+        ImportCore(json, sourceName, sourcePath: null);
+
+    /// <summary>三个入口（文件 / 在线 / 内嵌）的共同管线：落盘的就是刚校验过的这份文本。</summary>
+    private static ImportResult ImportCore(string json, string sourceName, string? sourcePath)
+    {
+        var parsed = ParseJson(json, sourceName);
         if (parsed.Pack is null)
         {
             return new ImportResult(false, null, parsed.Errors);
@@ -396,69 +443,75 @@ public static class StylePacks
                 [$"样式 ID 与内置或其他包冲突（请让包作者改 ID，或先卸载对方包）：{string.Join("、", conflicts)}"]);
         }
 
-        return Install(pack, filePath);
+        return Install(pack, json, sourcePath);
     }
 
-    /// <summary>导入在线/内存中的包 JSON：与文件导入同一套校验，原文落盘（保真分享）。</summary>
-    public static ImportResult ImportJson(string json, string sourceName = "在线包")
-    {
-        var parsed = ParseJson(json, sourceName);
-        if (parsed.Pack is null)
-        {
-            return new ImportResult(false, null, parsed.Errors);
-        }
-
-        var pack = parsed.Pack;
-        MigrateOfficialPackRename(pack);
-        var conflicts = FindConflicts(pack);
-        if (conflicts.Count > 0)
-        {
-            return new ImportResult(false, null,
-                [$"样式 ID 与内置或其他包冲突（请先卸载对方包再安装）：{string.Join("、", conflicts)}"]);
-        }
-
-        return Install(pack, null, rawJson: json);
-    }
-
-    /// <summary>官方包改名迁移：删掉旧名安装文件（ID 相同，留着会让新名包被冲突拦截）。须在 <see cref="FindConflicts"/> 之前调用。</summary>
+    /// <summary>
+    /// 官方包改名迁移：删掉旧名安装文件（ID 相同，留着会让新名包被冲突拦截）。须在 <see cref="FindConflicts"/> 之前调用。
+    /// 只删「确实是旧版官方包」的文件：包名对得上且样式 ID 与新包有交集，用户自己的同名文件不受影响。
+    /// </summary>
     private static void MigrateOfficialPackRename(StylePack pack)
     {
+        var incoming = pack.Styles.Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var (oldName, newName) in OfficialPackRenames)
         {
-            if (string.Equals(newName, pack.Name, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(newName, pack.Name, StringComparison.OrdinalIgnoreCase))
             {
-                _ = Remove(oldName);
+                continue;
+            }
+
+            var oldFile = Path.Combine(ActiveDirectory, ToPackFileName(oldName));
+            if (ParseFile(oldFile).Pack is { } old
+                && string.Equals(old.Name, oldName, StringComparison.OrdinalIgnoreCase)
+                && old.Styles.Any(s => incoming.Contains(s.Id)))
+            {
+                TryDelete(oldFile);
             }
         }
     }
 
     /// <summary>落盘（同包名 = 升级），冲突只查内置与其他包（迁移已在各入口的冲突检查前完成）。</summary>
-    private static ImportResult Install(StylePack pack, string? sourcePath, string? rawJson = null)
+    private static ImportResult Install(StylePack pack, string json, string? sourcePath)
     {
         try
         {
             Directory.CreateDirectory(ActiveDirectory);
             var target = Path.Combine(ActiveDirectory, ToPackFileName(pack.Name));
-            if (sourcePath is not null && !PathsEqual(sourcePath, target))
+            var warnings = new List<string>();
+            if (!(sourcePath is not null && PathsEqual(sourcePath, target)) && ParseFile(target).Pack is { } existing)
             {
-                File.Copy(sourcePath, target, overwrite: true);
-
-                // 源文件本就在包目录内（下载后直接导入）：移除，避免同一包被扫成两份
-                if (PathsEqual(Path.GetDirectoryName(Path.GetFullPath(sourcePath))!, Path.GetFullPath(ActiveDirectory)))
-                {
-                    File.Delete(sourcePath);
-                }
-            }
-            else
-            {
-                File.WriteAllText(target, rawJson ?? Serialize(pack));
+                warnings.Add(string.Equals(existing.Name, pack.Name, StringComparison.OrdinalIgnoreCase)
+                    ? $"已覆盖同名包「{existing.Name}」（原 {existing.Styles.Count} 个样式）"
+                    : $"安装文件名与已装包「{existing.Name}」相同，已覆盖它");
             }
 
-            return new ImportResult(true, target, []);
+            warnings.AddRange(PackGrowth.Warnings(pack));
+            AtomicFile.WriteAllText(target, json);
+
+            // 源文件本就在包目录内（下载后直接导入）：移除，避免同一包被扫成两份
+            if (sourcePath is not null && !PathsEqual(sourcePath, target)
+                && PathsEqual(Path.GetDirectoryName(Path.GetFullPath(sourcePath))!, Path.GetFullPath(ActiveDirectory)))
+            {
+                TryDelete(sourcePath);
+            }
+
+            return new ImportResult(true, target, []) { Warnings = warnings };
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return new ImportResult(false, null, [$"写入失败：{ex.Message}"]);
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 删不掉就留着：下次再试，不影响本次操作
         }
     }
 
@@ -506,64 +559,79 @@ public static class StylePacks
             return result;
         }
 
-        foreach (var file in Directory.EnumerateFiles(ActiveDirectory, "*.json"))
+        // 文件名排序：ID 冲突时谁先加载谁生效，顺序要稳定
+        foreach (var file in Directory.EnumerateFiles(ActiveDirectory, "*.json").Order(StringComparer.OrdinalIgnoreCase))
         {
-            // 退役官方包清理：文件名命中即删（样式已由内置接管），删除失败则本次跳过不加载
-            if (RetiredOfficialPackFiles.Contains(Path.GetFileName(file)))
+            try
             {
-                try
+                if (LoadInstalledFile(file) is { } pack)
                 {
-                    File.Delete(file);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    result.Add(new InstalledPack(Path.GetFileNameWithoutExtension(file), file, [], "退役官方包清理失败（文件被占用）"));
-                }
-
-                continue;
-            }
-
-            var parsed = ParseFile(file);
-            if (parsed.Pack is null)
-            {
-                result.Add(new InstalledPack(Path.GetFileNameWithoutExtension(file), file, [], string.Join("; ", parsed.Errors)));
-                continue;
-            }
-
-            var pack = parsed.Pack;
-            var styles = new List<TextStyle>();
-            foreach (var definition in pack.Styles)
-            {
-                try
-                {
-                    styles.Add(StyleFactory.FromDefinition(definition, new StyleSource.Pack(pack.Name)));
-                }
-                catch (Exception ex)
-                {
-                    result.Add(new InstalledPack(pack.Name, file, [],
-                        $"[{definition.Id}] 编译失败：{ex.Message}"));
-                    styles = [];
-                    break;
+                    result.Add(pack);
                 }
             }
-
-            result.Add(new InstalledPack(pack.Name, file, styles, null));
+            catch (Exception ex)
+            {
+                // 任何意外都只算这一个文件坏，不能拖垮整个样式目录
+                result.Add(new InstalledPack(Path.GetFileNameWithoutExtension(file), file, [], $"加载失败：{ex.Message}"));
+            }
         }
 
         return result;
+    }
+
+    /// <summary>加载单个包文件；返回 null 表示该文件是已清理的退役官方包。</summary>
+    private static InstalledPack? LoadInstalledFile(string file)
+    {
+        var parsed = ParseFile(file);
+        if (parsed.Pack is null)
+        {
+            return new InstalledPack(Path.GetFileNameWithoutExtension(file), file, [], string.Join("; ", parsed.Errors));
+        }
+
+        var pack = parsed.Pack;
+
+        // 退役官方包清理：只认「文件名命中 + 全部样式 ID 都是当年官方包的 ID」，用户自己起同名的包不会被删
+        if (RetiredOfficialPackFiles.Contains(Path.GetFileName(file))
+            && pack.Styles.All(s => RetiredOfficialStyleIds.Contains(s.Id)))
+        {
+            TryDelete(file);
+            return null;
+        }
+
+        var styles = new List<TextStyle>();
+        foreach (var definition in pack.Styles)
+        {
+            try
+            {
+                styles.Add(StyleFactory.FromDefinition(definition, new StyleSource.Pack(pack.Name)));
+            }
+            catch (Exception ex)
+            {
+                return new InstalledPack(pack.Name, file, [], $"[{definition.Id}] 编译失败：{ex.Message}");
+            }
+        }
+
+        return new InstalledPack(pack.Name, file, styles, null);
     }
 
     /// <summary>卸载：按包名删除安装文件。目录里实际文件名是包名转化来的。</summary>
     public static bool Remove(string packName)
     {
         var target = Path.Combine(ActiveDirectory, ToPackFileName(packName));
-        if (!File.Exists(target))
+        try
+        {
+            if (!File.Exists(target))
+            {
+                return false;
+            }
+
+            File.Delete(target);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return false;
         }
-
-        File.Delete(target);
-        return true;
     }
 
     /// <summary>按安装记录卸载（直接删该文件；解析失败的坏包同样适用）。</summary>
@@ -673,58 +741,8 @@ public static class StylePacks
     }
 
     /// <summary>一键安装内嵌官方包：解析校验与冲突检查同 <see cref="Import"/>，资源原文字节落盘到包目录（同包名 = 覆盖升级）。</summary>
-    public static ImportResult InstallBundled(BundledPack bundled)
-    {
-        var parsed = ParseJson(bundled.Json, bundled.FileName);
-        if (parsed.Pack is null)
-        {
-            return new ImportResult(false, null, parsed.Errors);
-        }
-
-        var pack = parsed.Pack;
-        MigrateOfficialPackRename(pack);
-        var conflicts = FindConflicts(pack);
-        if (conflicts.Count > 0)
-        {
-            return new ImportResult(false, null,
-                [$"样式 ID 与内置或其他包冲突（请先卸载对方包再安装）：{string.Join("、", conflicts)}"]);
-        }
-
-        // 资源原文落盘（与导入同一管线）
-        return Install(pack, null, rawJson: bundled.Json);
-    }
-
-    // ---------- 导出 ----------
-
-    public static StylePack ExportStyles(IEnumerable<TextStyle> styles, string packName, string? author = null, string? description = null)
-    {
-        if (string.IsNullOrWhiteSpace(packName))
-        {
-            throw new ArgumentException("包名不能为空", nameof(packName));
-        }
-
-        var definitions = new List<StyleDefinition>();
-        foreach (var style in styles)
-        {
-            if (style.Definition is { } definition)
-            {
-                definitions.Add(definition);
-            }
-        }
-
-        if (definitions.Count == 0)
-        {
-            throw new ArgumentException("选中的样式没有可导出的定义", nameof(styles));
-        }
-
-        return new StylePack
-        {
-            Name = packName.Trim(),
-            Author = string.IsNullOrWhiteSpace(author) ? null : author!.Trim(),
-            Description = string.IsNullOrWhiteSpace(description) ? null : description!.Trim(),
-            Styles = definitions,
-        };
-    }
+    public static ImportResult InstallBundled(BundledPack bundled) =>
+        ImportCore(bundled.Json, bundled.FileName, sourcePath: null); // 资源原文落盘（与导入同一管线）
 
     public static string Serialize(StylePack pack) =>
         JsonSerializer.Serialize(pack, StylePackJson.PackOptions);
@@ -792,4 +810,11 @@ public static class StylePacks
         ToPackFileName("火星文非主流扩充"),
         ToPackFileName("火星文"),
     ];
+
+    /// <summary>退役官方包历代版本用过的全部样式 ID：文件内容全在这里才算官方旧包。</summary>
+    private static readonly HashSet<string> RetiredOfficialStyleIds = new(StringComparer.Ordinal)
+    {
+        "mars-star", "mars-wave", "mars-bracket", "mars-flower", "mars-wing", "mars-dots",
+        "mars-slashed", "mars-juhua", "mars-evil", "mars-trad", "mars-reverse", "mars-reverse-plain",
+    };
 }

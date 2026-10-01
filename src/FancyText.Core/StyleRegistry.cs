@@ -30,11 +30,10 @@ public static class StyleRegistry
 {
     public const int CurrentIndexSchemaVersion = 1;
 
-    private const string IndexPath = "Traveritas/fancytext-styles/main/index.json";
+    // raw 与 jsDelivr 的分支写法不同：raw 是 /repo/branch/path，jsDelivr 是 /repo@branch/path
+    public static string IndexUrl { get; } = "https://raw.githubusercontent.com/Traveritas/fancytext-styles/main/index.json";
 
-    public static string IndexUrl { get; } = $"https://raw.githubusercontent.com/{IndexPath}";
-
-    public static string IndexMirrorUrl { get; } = $"https://cdn.jsdelivr.net/gh/{IndexPath}";
+    public static string IndexMirrorUrl { get; } = "https://cdn.jsdelivr.net/gh/Traveritas/fancytext-styles@main/index.json";
 
     private static readonly Lazy<HttpClient> Client = new(() =>
     {

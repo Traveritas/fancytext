@@ -2,28 +2,36 @@ namespace FancyText.Core;
 
 /// <summary>
 /// 全部可用样式目录：内置声明式定义（本文件 + StyleCatalog.Expanded.cs）经 <see cref="StyleFactory"/> 编译。
-/// 每项都是「声明式步骤」的简单管道或少数组合；样式调研来源见 docs/01-调研报告-花式文字插件.md。
+/// 每项都是「声明式步骤」的简单管道或少数组合；样式调研来源见 docs/archive/01-调研报告-花式文字插件.md。
 /// 步骤语义见 <see cref="TransformStep"/>；映射表按名引用共享（见 KnownTransforms）。
 /// </summary>
 public static partial class StyleCatalog
 {
     public const string DefaultSample = "Hello 你好 123";
 
+    // 全部惰性构建、不放静态初始化器：静态构造一旦抛异常，类型在整个进程内永久不可用
     private static readonly object Gate = new();
     private static List<TextStyle>? _builtIn;
-    private static IReadOnlyList<TextStyle> _all = BuildAll();
+    private static HashSet<string>? _builtInIds;
+    private static IReadOnlyList<TextStyle>? _all;
 
     /// <summary>全部样式：内置 + 已安装样式包（%LOCALAPPDATA%\FancyText\styles，不含已停用包）。进程内缓存，导入/卸载/停用后调 <see cref="Reload"/>。</summary>
     public static IReadOnlyList<TextStyle> All
     {
-        get { lock (Gate) { return _all; } }
+        get { lock (Gate) { return _all ??= BuildAll(); } }
     }
 
     /// <summary>仅内置样式（声明式定义编译，进程内构建一次）。</summary>
-    private static List<TextStyle> BuiltIn => _builtIn ??= Build();
+    private static List<TextStyle> BuiltIn
+    {
+        get { lock (Gate) { return _builtIn ??= Build(); } }
+    }
 
     /// <summary>仅内置样式的稳定 ID 集（包冲突检查用，不受包增删影响）。</summary>
-    public static IReadOnlyCollection<string> BuiltInIds { get; } = BuiltIn.Select(s => s.Id).ToArray();
+    public static IReadOnlySet<string> BuiltInIds
+    {
+        get { lock (Gate) { return _builtInIds ??= BuiltIn.Select(s => s.Id).ToHashSet(StringComparer.Ordinal); } }
+    }
 
     /// <summary>重建 All（内置 + 扫描包目录）。导入/卸载样式包后调用；UI 需自行刷新缓存的索引。</summary>
     public static void Reload()
@@ -39,8 +47,16 @@ public static partial class StyleCatalog
         var builtIn = BuiltIn;
         var list = new List<TextStyle>(builtIn.Count);
         list.AddRange(builtIn);
-        // 每次重建重读 state.json：停用/启用包在 Reload 后即时生效，三端经此同一合并点自动一致
-        list.AddRange(StylePacks.LoadInstalledStyles(builtIn.Select(s => s.Id).ToArray(), new UsageState().DisabledPacks));
+        try
+        {
+            // 每次重建重读 state.json：停用/启用包在 Reload 后即时生效，三端经此同一合并点自动一致
+            list.AddRange(StylePacks.LoadInstalledStyles(BuiltInIds, new UsageState().DisabledPacks));
+        }
+        catch (Exception)
+        {
+            // 包目录出任何意外都只丢包样式，内置样式照常可用
+        }
+
         return list;
     }
 

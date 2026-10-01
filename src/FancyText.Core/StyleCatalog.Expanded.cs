@@ -3,7 +3,7 @@ namespace FancyText.Core;
 /// <summary>
 /// <see cref="StyleCatalog"/> 的第二批扩充样式：
 /// 装饰模板（2.C1/2.C3）、组合符预设（2.B2）、数字变体（2.A6）、编码（2.E）、火星文还原（2.A5 反向）、俄化体。
-/// 码点均取自 docs/01-调研报告-花式文字插件.md 对应小节的实测数据。
+/// 码点均取自 docs/archive/01-调研报告-花式文字插件.md 对应小节的实测数据。
 /// 组合附加符号一律写 \uXXXX 转义；模板中易混淆的藏文标记亦用转义，常见花符号沿用 wing- 系列的字面量写法。
 /// 数字/俄化/火星文反向表与编码算法见 KnownTransforms / EncodingTransforms。
 /// </summary>

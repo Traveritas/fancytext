@@ -6,6 +6,9 @@
     <AnalysisMode>Recommended</AnalysisMode>
     <NuGetAuditMode>direct</NuGetAuditMode>
 
+    <!-- 版本号单一真源：桌面版 / CLI / Core 共用，tools/package.ps1 也从这里读 -->
+    <Version>1.5.5</Version>
+
     <!-- 许可与仓库元数据（NuGet 包元数据、WinGet/商店清单都取这里；版权人与 LICENSE 保持一致） -->
     <Authors>Traveritas</Authors>
     <Copyright>Copyright (c) 2026 Traveritas</Copyright>

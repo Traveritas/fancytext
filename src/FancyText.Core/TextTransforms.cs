@@ -126,16 +126,32 @@ public static class TextTransforms
         }
 
         var sb = new StringBuilder(input.Length);
+        var lastBase = '\0';
         foreach (var ch in input)
         {
-            if (!IsDecorativeCombiningMark(ch))
+            if (!IsDecorativeCombiningMark(ch) || IsNativeMark(ch, lastBase))
             {
                 sb.Append(ch);
+                if (!IsDecorativeCombiningMark(ch))
+                {
+                    lastBase = ch;
+                }
             }
         }
 
         return sb.ToString();
     }
+
+    /// <summary>
+    /// 泰/老挝/藏文组合符挂在同文字的基字上时是正文（สวัสดี 的元音），不是装饰——保留；
+    /// 只有挂在汉字、拉丁等别的文字上时才是本引擎叠出来的特效。
+    /// </summary>
+    private static bool IsNativeMark(char mark, char lastBase) =>
+        (IsInBlock(mark, '฀', '๿') && IsInBlock(lastBase, '฀', '๿'))
+        || (IsInBlock(mark, '຀', '໿') && IsInBlock(lastBase, '຀', '໿'))
+        || (IsInBlock(mark, 'ༀ', '࿿') && IsInBlock(lastBase, 'ༀ', '࿿'));
+
+    private static bool IsInBlock(char c, char first, char last) => c >= first && c <= last;
 
     internal static bool IsDecorativeCombiningMark(char c) =>
         (c >= '\u0300' && c <= '\u036F') ||  // 拉丁组合附加符号（含 Zalgo、各类线条）

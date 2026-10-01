@@ -44,7 +44,7 @@ internal sealed class SettingsWindow : Window
     private TextBlock _packStatus = new();
     private StackPanel _packsList = new();
     private readonly HashSet<string> _expandedPacks = new(StringComparer.OrdinalIgnoreCase); // 面板重填后保留行展开态（按包名）
-    private StackPanel _onlineList = new();
+    private StackPanel _onlineList = new(); // 每次 BuildContent 新建（见 MakeStylePacksPanel）
     private TextBlock _onlineStatus = new();
     private IReadOnlyList<FancyText.Core.RegistryPackEntry>? _onlineEntries; // 最近一次拉到的索引（null=未拉取）
     private bool _onlineBusy; // 获取/下载期间禁止并发操作
@@ -173,7 +173,8 @@ internal sealed class SettingsWindow : Window
         {
             Content = root,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            MaxHeight = 760,
+            // 不超过工作区（扣掉标题栏与边框）：小屏或高缩放下 760 会超出屏幕
+            MaxHeight = Math.Min(760, SystemParameters.WorkArea.Height - 60),
         };
         Content = scroll;
     }
@@ -802,17 +803,6 @@ internal sealed class SettingsWindow : Window
         StyleButton(importBtn);
         importBtn.Click += (_, _) => OnImportPack();
 
-        var exportBtn = new Button
-        {
-            Content = Loc.S(_lang, "导出收藏为包…", "Export pinned…"),
-            FontSize = 12,
-            Padding = new Thickness(10, 3, 10, 3),
-            Margin = new Thickness(8, 0, 0, 0),
-            Cursor = Cursors.Hand,
-        };
-        StyleButton(exportBtn);
-        exportBtn.Click += (_, _) => OnExportPinnedPack();
-
         var fetchBtn = new Button
         {
             Content = Loc.S(_lang, "获取更多样式包…", "Get more packs…"),
@@ -847,8 +837,13 @@ internal sealed class SettingsWindow : Window
             Margin = new Thickness(0, 4, 0, 0),
             TextWrapping = TextWrapping.Wrap,
         };
-        _onlineList.Visibility = Visibility.Collapsed;
-        _onlineStatus.Visibility = Visibility.Collapsed;
+
+        // 每次重建都换新面板（旧面板还挂在旧控件树上，WPF 不允许一个元素有两个父级）；已拉到的索引原样重填
+        _onlineList = new StackPanel();
+        var onlineShown = _onlineEntries is not null;
+        _onlineList.Visibility = onlineShown ? Visibility.Visible : Visibility.Collapsed;
+        _onlineStatus.Visibility = onlineShown ? Visibility.Visible : Visibility.Collapsed;
+        FillOnlineList();
         var onlineSection = new StackPanel();
         onlineSection.Children.Add(MakePackGroupHeader(Loc.S(_lang, "在线获取（GitHub 索引）", "Online (GitHub index)")));
         onlineSection.Children.Add(_onlineList);
@@ -856,7 +851,6 @@ internal sealed class SettingsWindow : Window
 
         var panel = new StackPanel();
         buttons.Children.Add(importBtn);
-        buttons.Children.Add(exportBtn);
         buttons.Children.Add(fetchBtn);
         panel.Children.Add(buttons);
         panel.Children.Add(_packStatus);
@@ -1012,7 +1006,7 @@ internal sealed class SettingsWindow : Window
                 return;
             }
 
-            ApplyPacksChanged(Loc.S(_lang, $"已安装「{entry.PackName}」", $"Installed \"{entry.PackName}\""));
+            ApplyPacksChanged(Loc.S(_lang, $"已安装「{entry.PackName}」", $"Installed \"{entry.PackName}\""), import.Warnings);
             _onlineStatus.Text = "";
             FillOnlineList(); // 该行换成「已安装 ✓」
         }
@@ -1142,7 +1136,7 @@ internal sealed class SettingsWindow : Window
 
                 // 安装即启用：清掉同名包可能残留的停用标记，否则"装了却看不到样式"
                 _main.Usage.SetPackDisabled(pack.PackName, false);
-                ApplyPacksChanged(Loc.S(_lang, "已安装 ✓（命令面板插件需重启后生效）", "Installed ✓ (Command Palette extension picks it up after restart)"));
+                ApplyPacksChanged(Loc.S(_lang, "已安装 ✓", "Installed ✓"));
             };
             buttons.Children.Add(installBtn);
         }
@@ -1388,53 +1382,22 @@ internal sealed class SettingsWindow : Window
             _main.Usage.SetPackDisabled(importedName, false);
         }
 
-        ApplyPacksChanged(Loc.S(_lang, "已导入 ✓（命令面板插件需重启后生效）", "Imported ✓ (Command Palette extension picks it up after restart)"));
+        ApplyPacksChanged(Loc.S(_lang, "已导入 ✓", "Imported ✓"), result.Warnings);
     }
 
-    private void OnExportPinnedPack()
-    {
-        var pinned = _main.PinnedStyles;
-        if (pinned.Count == 0)
-        {
-            ShowPackError(Loc.S(_lang, "还没有收藏任何样式——在列表里按 Ctrl+D 收藏后再导出", "Nothing pinned yet — press Ctrl+D in the list to pin styles first"));
-            return;
-        }
-
-        var dialog = new Microsoft.Win32.SaveFileDialog
-        {
-            Title = Loc.S(_lang, "导出收藏为样式包", "Export pinned as style pack"),
-            Filter = Loc.S(_lang, "样式包 (*.json)|*.json", "Style pack (*.json)|*.json"),
-            FileName = Loc.S(_lang, "我的收藏.json", "My-pinned.json"),
-        };
-        if (dialog.ShowDialog(this) != true)
-        {
-            return;
-        }
-
-        try
-        {
-            var packName = Path.GetFileNameWithoutExtension(dialog.FileName);
-            var pack = FancyText.Core.StylePacks.ExportStyles(pinned, packName, author: null);
-            File.WriteAllText(dialog.FileName, FancyText.Core.StylePacks.Serialize(pack));
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
-        {
-            ShowPackError(Loc.S(_lang, $"导出失败：{ex.Message}", $"Export failed: {ex.Message}"));
-            return;
-        }
-
-        _packStatus.Foreground = _theme.Primary;
-        _packStatus.Text = Loc.S(_lang,
-            $"已导出 {pinned.Count} 个收藏样式 ✓ 发送这个文件即可分享",
-            $"Exported {pinned.Count} pinned styles ✓ share this file");
-    }
-
-    /// <summary>包目录/启停状态变动后的统一收尾：重载目录 + 刷新主窗口 + 重填面板列表。</summary>
-    private void ApplyPacksChanged(string message)
+    /// <summary>包目录/启停状态变动后的统一收尾：重载目录 + 刷新主窗口 + 重填面板列表。有警告时状态行改用警示色列出。</summary>
+    private void ApplyPacksChanged(string message, IReadOnlyList<string>? warnings = null)
     {
         FancyText.Core.StyleCatalog.Reload();
         _main.RefreshStyles();
         FillPacksPanel();
+        if (warnings is { Count: > 0 })
+        {
+            _packStatus.Foreground = Frozen(0xCA, 0x50, 0x10);
+            _packStatus.Text = message + Loc.S(_lang, "  注意：", "  Note: ") + string.Join("；", warnings);
+            return;
+        }
+
         _packStatus.Foreground = _theme.Primary;
         _packStatus.Text = message;
     }

@@ -104,8 +104,9 @@ internal sealed class TrayIconController : IDisposable
         public override Color CheckPressedBackground => C(T.SelectedItem);
     }
 
-    private void UpdateTooltip() => _notifyIcon.Text =
-        Loc.S(_window.Lang, $"花式文字 · {_window.HotkeyDisplay} 唤出", $"Fancy Text · {_window.HotkeyDisplay} to open");
+    private void UpdateTooltip() => _notifyIcon.Text = _window.HotkeyRegistered
+        ? Loc.S(_window.Lang, $"花式文字 · {_window.HotkeyDisplay} 唤出", $"Fancy Text · {_window.HotkeyDisplay} to open")
+        : Loc.S(_window.Lang, $"花式文字 · {_window.HotkeyDisplay} 被占用，双击唤出", $"Fancy Text · {_window.HotkeyDisplay} taken, double-click");
 
     /// <summary>托盘图标：取 exe 自身的多尺寸图标（csproj ApplicationIcon 嵌入的 app.ico），取 16px 帧；
     /// 文件无内嵌图标时（dotnet run 开发态）ExtractAssociatedIcon 返回 null，回退系统默认防 NRE。</summary>

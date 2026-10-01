@@ -10,6 +10,7 @@ internal static class NativeMethods
     public const uint MOD_CONTROL = 0x2;
     public const uint MOD_SHIFT = 0x4;
     public const uint MOD_WIN = 0x8;
+    public const uint MOD_NOREPEAT = 0x4000; // 按住不放不重复触发 WM_HOTKEY
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -3,10 +3,10 @@
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path $PSScriptRoot -Parent
-# 版本号与 csproj 同步（单一真源，避免打包名与内容错位）
-$csproj = [xml][IO.File]::ReadAllText((Join-Path $root 'src\FancyText.Desktop\FancyText.Desktop.csproj'), [Text.UTF8Encoding]::new($false))
-$version = ($csproj.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version
-if (-not $version) { throw 'cannot read Version from csproj' }
+# 版本号读 Directory.Build.props（单一真源，避免打包名与内容错位）
+$props = [xml][IO.File]::ReadAllText((Join-Path $root 'Directory.Build.props'), [Text.UTF8Encoding]::new($false))
+$version = ($props.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version
+if (-not $version) { throw 'cannot read Version from Directory.Build.props' }
 $outDir = Join-Path $root 'dist'
 $stage = Join-Path $outDir "FancyText.Desktop-$version"
 $zipPath = Join-Path $outDir "FancyText.Desktop-$version-win-x64.zip"
@@ -39,7 +39,8 @@ $readme = @"
 快速上手
 --------
 1. 双击 FancyText.Desktop.exe 启动（常驻托盘，不占任务栏）。
-2. 按 Ctrl+Alt+F 唤出（自动预填其它应用中选中的文字），输入文字，↑↓ 浏览样式，Enter 复制并收起。
+2. 按 Ctrl+Alt+F 唤出（自动预填其它应用中选中的文字；预填剪贴板默认关闭，可在设置里打开），
+   输入文字，↑↓ 浏览样式，Enter 复制并收起。
    - Ctrl+D 收藏 / Ctrl+R 随机换一个 / Esc 收起
    - 家族条目（如"翅膀 · 28 个样式"）按 Enter 钻入，Esc 返回上一级
    - 纯键盘：Tab 展开/收起筛选菜单，Ctrl+Tab 循环切换筛选，
@@ -63,7 +64,6 @@ $readme = @"
 - 卸载：托盘退出后删除 exe 即可；若开过"开机自启动"，先在设置里关掉。
 - 许可：本项目代码 MIT（LICENSE）；第三方组件与内嵌词典数据（.NET 运行时、cnchar、
   OpenCC、pinyin-data）的许可与版权声明见 THIRD-PARTY-NOTICES.md。
-- 姊妹项目：PowerToys Command Palette 插件版（另附），收藏数据互通。
 "@
 
 [System.IO.File]::WriteAllText((Join-Path $stage 'README.txt'), $readme, [System.Text.UTF8Encoding]::new($true))

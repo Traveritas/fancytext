@@ -592,9 +592,26 @@ public static class Program
         Check(guarded("你好") == "你好" && guarded("Hi") == Find("spacing-wide").Transform("Hi"), "守卫零命中短路（宽体）");
         Check(StyleInterpreter.Compile([new UseMapStep("upside-down"), new IfChangedStep(new ReverseStep())])("hello")
             == Find("upside-down").Transform("hello"), "守卫应用（倒转=映射+倒序）");
+        // 全由恒等字母组成的词（倒转表 s→s o→o l→l）仍然适用，不能被守卫当成零命中
+        Check(Find("upside-down").Transform("solo") == "olos", "倒转：恒等字母词照样倒序", Find("upside-down").Transform("solo"));
+        Check(Find("mirror").Transform("tail") == "liat", "镜像：恒等字母词照样倒序", Find("mirror").Transform("tail"));
+        Check(Find("upside-down").Transform("你好") == "你好", "倒转：纯中文仍不适用");
+        Check(Find("bold").Transform(null!) == "", "null 输入不抛异常");
+        Check(Find("strip-marks").Transform("สวัสดี") == "สวัสดี", "去装饰：泰文正文元音保留");
+        Check(Find("strip-marks").Transform(Find("juhua-2").Transform("你好")) == "你好", "去装饰：菊花体还原");
+        Check(Find("strip-marks").Transform("你็้好") == "你好", "去装饰：挂在汉字上的泰文符号照样去掉");
+        Check(StyleRegistry.IndexMirrorUrl.Contains("fancytext-styles@main/", StringComparison.Ordinal),
+            "jsDelivr 镜像地址用 @分支 写法");
     }
 
-    /// <summary>样式包：JSON 解析（全部步骤类型）、导出往返、坏输入校验、安装/扫描/卸载/冲突。</summary>
+    /// <summary>用内置样式的定义拼一个包（序列化往返测试用）。</summary>
+    private static StylePack PackOf(string name, params string[] ids) => new()
+    {
+        Name = name,
+        Styles = ids.Select(id => Find(id).Definition!).ToList(),
+    };
+
+    /// <summary>样式包：JSON 解析（全部步骤类型）、序列化往返、坏输入校验、安装/扫描/卸载/冲突。</summary>
     private static void TestStylePacks()
     {
         Console.WriteLine("样式包：");
@@ -640,10 +657,9 @@ public static class Program
         Check(styles["test-combo"].Category == TextStyleCategory.CjkEffect && styles["test-combo"].Category.DisplayName() == "特效", "分类显示名（特效）");
         Check(Find("bold").Category.DisplayName() == "英文/字母花体", "分类显示名（英文/字母花体）");
 
-        // 导出 → 序列化 → 解析 → 重编译 输出一致
-        var exported = StylePacks.ExportStyles([Find("bold"), Find("wing-classic"), Find("spacing-wide")], "我的收藏", "我");
-        var round = StylePacks.ParseJson(StylePacks.Serialize(exported), "roundtrip.json");
-        Check(round.Pack is not null && round.Pack.Styles.Count == 3, "导出→解析往返成功", string.Join("; ", round.Errors));
+        // 序列化 → 解析 → 重编译 输出一致（内置定义覆盖到全部常用步骤）
+        var round = StylePacks.ParseJson(StylePacks.Serialize(PackOf("往返", "bold", "wing-classic", "spacing-wide")), "roundtrip.json");
+        Check(round.Pack is not null && round.Pack.Styles.Count == 3, "序列化→解析往返成功", string.Join("; ", round.Errors));
         if (round.Pack is { } roundPack)
         {
             foreach (var def in roundPack.Styles)
@@ -671,6 +687,11 @@ public static class Program
             ("映射键多字符", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"encoding","steps":[{"op":"mapReplace","map":{"ab":"c"}}]}]}"""),
             ("包内 ID 重复", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"encoding","steps":[{"op":"reverse"}]},{"id":"a-1","name":"B","category":"encoding","steps":[{"op":"reverse"}]}]}"""),
             ("ID 格式非法", """{"schemaVersion":1,"name":"x","styles":[{"id":"Bad_Id","name":"A","category":"encoding","steps":[{"op":"reverse"}]}]}"""),
+            ("null 步骤", """{"schemaVersion":1,"name":"x","styles":[{"id":"a-1","name":"A","category":"decoration","steps":[null]}]}"""),
+            ("null 样式", """{"schemaVersion":1,"name":"x","styles":[null]}"""),
+            ("守卫内大映射超限", "{\"schemaVersion\":1,\"name\":\"x\",\"styles\":[{\"id\":\"a-1\",\"name\":\"A\",\"category\":\"encoding\",\"steps\":[{\"op\":\"ifChanged\",\"inner\":{\"op\":\"mapReplace\",\"map\":{"
+                + string.Join(",", Enumerable.Range(0x4E00, StylePacks.MaxMapEntriesPerStyle + 1).Select(c => $"\"{(char)c}\":\"x\""))
+                + "}}}]}]}"),
         };
         foreach (var (name, json) in badPacks)
         {
@@ -745,11 +766,47 @@ public static class Program
             // 退役官方包清理：火星文包（正反向/去装饰均已内置），扫描时自动删除安装文件
             File.WriteAllText(Path.Combine(tempDir, "火星文.json"),
                 """{"schemaVersion":1,"name":"火星文","styles":[{"id":"mars-reverse","name":"旧包样式","category":"chinese","steps":[{"op":"reverse"}]}]}""");
-            File.WriteAllText(Path.Combine(tempDir, "火星文非主流扩充.json"), """{"schemaVersion":1,"name":"火星文非主流扩充","styles":[{"id":"mars-old","name":"更旧","category":"chinese","steps":[{"op":"reverse"}]}]}""");
+            File.WriteAllText(Path.Combine(tempDir, "火星文非主流扩充.json"), """{"schemaVersion":1,"name":"火星文非主流扩充","styles":[{"id":"mars-star","name":"更旧","category":"chinese","steps":[{"op":"reverse"}]}]}""");
             var retiredScan = StylePacks.LoadInstalled();
             Check(retiredScan.All(p => p.PackName != "火星文" && p.PackName != "火星文非主流扩充"), "退役官方包不再加载");
             Check(!File.Exists(Path.Combine(tempDir, "火星文.json")) && !File.Exists(Path.Combine(tempDir, "火星文非主流扩充.json")),
                 "退役官方包安装文件被自动清除");
+
+            // 用户自己起名「火星文」的包（ID 不是当年官方包的）：扫描不能删
+            var userMars = Path.Combine(tempDir, "火星文.json");
+            File.WriteAllText(userMars, """{"schemaVersion":1,"name":"火星文","styles":[{"id":"my-mars","name":"我的火星文","category":"chinese","steps":[{"op":"reverse"}]}]}""");
+            var userScan = StylePacks.LoadInstalled();
+            Check(File.Exists(userMars) && userScan.Any(p => p.PackName == "火星文" && p.Error is null), "同名用户包不被退役清理误删");
+            File.Delete(userMars);
+
+            // 同名覆盖与文件名撞车：照装，但给出警告
+            var v1 = Path.Combine(tempDir, "v1.json");
+            File.WriteAllText(v1, """{"schemaVersion":1,"name":"A-B","styles":[{"id":"first-pack-style","name":"一","category":"decoration","steps":[{"op":"reverse"}]}]}""");
+            var firstImport = StylePacks.Import(v1);
+            Check(firstImport.Success && firstImport.Warnings.Count == 0, "首次安装无警告", string.Join("; ", firstImport.Warnings));
+            File.WriteAllText(v1, """{"schemaVersion":1,"name":"A B","styles":[{"id":"second-pack-style","name":"二","category":"decoration","steps":[{"op":"reverse"}]}]}""");
+            var collide = StylePacks.Import(v1);
+            Check(collide.Success && collide.Warnings.Any(w => w.Contains("A-B")), "文件名撞车给出警告", string.Join("; ", collide.Warnings));
+            File.WriteAllText(v1, """{"schemaVersion":1,"name":"A B","styles":[{"id":"second-pack-style","name":"二","category":"decoration","steps":[{"op":"reverse"}]}]}""");
+            var sameName = StylePacks.Import(v1);
+            Check(sameName.Success && sameName.Warnings.Any(w => w.Contains("同名")), "同名覆盖给出警告", string.Join("; ", sameName.Warnings));
+            Check(File.ReadAllText(sameName.InstalledPath!).Contains("second-pack-style"), "落盘内容即校验内容");
+            Check(!File.Exists(v1), "包目录内的源文件导入后移除（不重复扫描）");
+            Check(!Directory.EnumerateFiles(tempDir, "*.tmp").Any(), "原子写不留临时文件");
+
+            // 输出膨胀：叠 4 层逐字包围——照装但警告，运行时截断兜底
+            var wrap = """{"op":"wrapEach","prefix":"abcdefgh","suffix":"ijklmnop"}""";
+            var bombPath = Path.Combine(tempDir, "bomb-src.json");
+            File.WriteAllText(bombPath, $$"""{"schemaVersion":1,"name":"bomb","styles":[{"id":"bomb-1","name":"炸","category":"decoration","steps":[{{wrap}},{{wrap}},{{wrap}},{{wrap}},{{wrap}},{{wrap}}]}]}""");
+            var bomb = StylePacks.Import(bombPath);
+            Check(bomb.Success && bomb.Warnings.Any(w => w.Contains("bomb-1")), "输出膨胀给出警告", string.Join("; ", bomb.Warnings));
+            var bombStyle = StylePacks.LoadInstalled().Single(p => p.PackName == "bomb").Styles[0];
+            Check(bombStyle.Transform(new string('字', 64)).Length <= 1_000_000, "包样式输出有上限（不卡死不 OOM）");
+            Check(StylePacks.Remove("bomb") && StylePacks.Remove("A B"), "清理测试包");
+
+            // 常规包不触发膨胀警告；内置样式即便按包的标准估算也都在阈值内
+            Check(StyleCatalog.BuiltInIds.All(id => Find(id).Definition is not { } d || PackGrowth.Estimate(d.Steps) <= PackGrowth.WarnThreshold),
+                "内置样式均不触发膨胀警告");
         }
         finally
         {
@@ -774,10 +831,18 @@ public static class Program
             var scan = StylePacks.LoadInstalled();
             Check(scan.Count == 2 && scan.Count(i => i.Error is not null) == 1 && scan.Count(i => i.Error is null) == 1,
                 "坏包隔离（好包仍可加载）", string.Join("; ", scan.Select(i => $"{i.PackName}: {i.Error}")));
+
+            // null 步骤的坏包放进目录：目录照常构建（曾让 StyleCatalog 静态初始化永久失败）
+            File.WriteAllText(Path.Combine(tempDir2, "null-step.json"),
+                """{"schemaVersion":1,"name":"bad","styles":[{"id":"a","name":"n","category":"decoration","steps":[null]}]}""");
+            StyleCatalog.Reload();
+            Check(StyleCatalog.All.Count == StyleCatalog.BuiltInIds.Count + 4, "null 坏包不拖垮样式目录");
+            Check(StylePacks.LoadInstalled().Any(p => p.FilePath.EndsWith("null-step.json", StringComparison.Ordinal) && p.Error is not null), "null 坏包标为损坏");
         }
         finally
         {
             StylePacks.DirectoryOverrideForTests = prevPackDir;
+            StyleCatalog.Reload();
             try
             {
                 Directory.Delete(tempDir2, recursive: true);
@@ -1042,8 +1107,8 @@ public static class Program
             var style = StyleFactory.FromDefinition(bi.Styles[0]);
             Check(style.NameEn == "Bilingual Style" && style.NoteEn == "English note", "nameEn/noteEn 进入样式");
             Check(style.GetName(AppLanguage.English) == "Bilingual Style", "包样式英文名生效");
-            var round = StylePacks.ParseJson(StylePacks.Serialize(StylePacks.ExportStyles([Find("bold")], "rt2")), "rt2.json");
-            Check(round.Pack?.Styles[0].NameEn == Find("bold").NameEn, "导出携带内置英文名往返");
+            var round = StylePacks.ParseJson(StylePacks.Serialize(PackOf("rt2", "bold")), "rt2.json");
+            Check(round.Pack?.Styles[0].NameEn == Find("bold").NameEn, "序列化携带内置英文名往返");
         }
 
         // 超长 nameEn 被拦截

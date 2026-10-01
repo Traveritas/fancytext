@@ -18,10 +18,28 @@ namespace FancyText.Cli;
 ///   fancy --packs             列出已安装的样式包（含停用标记）
 ///   fancy --online            列出在线索引（fancytext-styles 仓库）
 ///   fancy --online-install <id|包名>  从在线索引下载并安装
-///   fancy --export <ID...> [--out <包.json>]  把若干样式（如收藏）导出为可分享的包
+///   fancy --remove <包名>     卸载样式包
+///   fancy -- <文本>           -- 之后全部当文本（文本以 -- 开头时用）
 /// </summary>
 public static class Program
 {
+    private static readonly string[] KnownOptions = ["--list", "--json", "--random", "--demo", "--help", "--version"];
+
+    private const string Usage = """
+        fancy [文本]                     全部样式预览
+        fancy <样式ID> <文本>            单样式转换，只输出结果
+        fancy --list                     样式 ID 清单
+        fancy --random [文本]            随机样式
+        fancy --json [文本]              JSON 输出全部结果
+        fancy --import <包.json>         导入样式包
+        fancy --packs                    列出已安装样式包
+        fancy --remove <包名>            卸载样式包
+        fancy --online                   列出在线索引
+        fancy --online-install <id>      从在线索引安装
+        fancy --version                  版本号
+        fancy -- <文本>                  -- 之后全部当文本
+        """;
+
     /// <summary>界面语言：跟随共享 state.json 的语言偏好（桌面版/插件切换后 CLI 同步），无则系统文化。</summary>
     private static AppLanguage Lang { get; } = Localization.Resolve(new UsageState().Language);
 
@@ -67,34 +85,53 @@ public static class Program
 
                     return RemovePack(args[++i]);
 
-                case "--export":
-                    var ids = new List<string>();
-                    string? outFile = null;
-                    for (var j = i + 1; j < args.Length; j++)
-                    {
-                        if (args[j] == "--out")
-                        {
-                            if (j + 1 >= args.Length)
-                            {
-                                Console.Error.WriteLine(Loc.S(Lang, "--out 需要输出文件路径", "--out requires an output file path"));
-                                return 2;
-                            }
-
-                            outFile = args[++j];
-                        }
-                        else if (!args[j].StartsWith("--", StringComparison.Ordinal))
-                        {
-                            ids.Add(args[j]);
-                        }
-                    }
-
-                    return ExportStyles(ids, outFile);
+                case "--":
+                    i = args.Length; // 其后全是文本，不再找子命令
+                    break;
             }
         }
 
-        var rest = args.Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToList();
+        // 拆分选项与位置参数；"--" 之后的一切都当文本（允许文本本身以 -- 开头）
+        var options = new HashSet<string>(StringComparer.Ordinal);
+        var rest = new List<string>();
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--")
+            {
+                rest.AddRange(args.Skip(i + 1));
+                break;
+            }
 
-        if (args.Contains("--list"))
+            if (args[i].StartsWith("--", StringComparison.Ordinal))
+            {
+                options.Add(args[i]);
+            }
+            else
+            {
+                rest.Add(args[i]);
+            }
+        }
+
+        var unknown = options.Except(KnownOptions).ToList();
+        if (unknown.Count > 0)
+        {
+            Console.Error.WriteLine(Loc.S(Lang, $"未知选项：{string.Join(" ", unknown)}（用 --help 查看用法）", $"Unknown option: {string.Join(" ", unknown)} (see --help)"));
+            return 2;
+        }
+
+        if (options.Contains("--help"))
+        {
+            Console.WriteLine(Usage);
+            return 0;
+        }
+
+        if (options.Contains("--version"))
+        {
+            Console.WriteLine(typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "?");
+            return 0;
+        }
+
+        if (options.Contains("--list"))
         {
             foreach (var g in StyleCatalog.All.GroupBy(s => s.CategoryKey))
             {
@@ -108,15 +145,19 @@ public static class Program
             return 0;
         }
 
-        var text = ResolveText(rest);
+        // --json / --random 不接受样式 ID，位置参数全部是文本；否则两个以上位置参数时首个是样式 ID
+        var wholeText = options.Contains("--json") || options.Contains("--random");
+        var text = rest.Count == 0
+            ? StyleCatalog.DefaultSample
+            : string.Join(' ', wholeText || rest.Count == 1 ? rest : rest.Skip(1));
 
-        if (args.Contains("--json"))
+        if (options.Contains("--json"))
         {
             EmitJson(text);
             return 0;
         }
 
-        if (rest.Count >= 2)
+        if (!wholeText && rest.Count >= 2)
         {
             // fancy <样式ID> <文本>
             var style = StyleCatalog.All.FirstOrDefault(s =>
@@ -131,7 +172,7 @@ public static class Program
             return 0;
         }
 
-        if (args.Contains("--random"))
+        if (options.Contains("--random"))
         {
             var applicable = StyleCatalog.All
                 .Where(s => !string.Equals(SafeTransform(s, text), text, StringComparison.Ordinal))
@@ -161,13 +202,6 @@ public static class Program
 
         return 0;
     }
-
-    private static string ResolveText(List<string> rest) => rest.Count switch
-    {
-        0 => StyleCatalog.DefaultSample,
-        1 => rest[0],
-        _ => string.Join(' ', rest.Skip(1)),
-    };
 
     private static string SafeTransform(TextStyle style, string text)
     {
@@ -220,8 +254,16 @@ public static class Program
         }
 
         Console.WriteLine(Loc.S(Lang, $"已导入 ✓（{result.InstalledPath}）", $"Imported ✓ ({result.InstalledPath})"));
-        Console.WriteLine(Loc.S(Lang, "桌面版即时生效；命令面板插件重启后生效。", "The desktop app picks it up immediately; the Command Palette extension after a restart."));
+        WriteWarnings(result);
         return 0;
+    }
+
+    private static void WriteWarnings(ImportResult result)
+    {
+        foreach (var warning in result.Warnings)
+        {
+            Console.Error.WriteLine(Loc.S(Lang, $"  注意：{warning}", $"  Note: {warning}"));
+        }
     }
 
     private static int ListPacks()
@@ -331,64 +373,7 @@ public static class Program
         }
 
         Console.WriteLine(Loc.S(Lang, $"已安装「{entry.PackName}」→ {import.InstalledPath}", $"Installed \"{entry.PackName}\" -> {import.InstalledPath}"));
-        return 0;
-    }
-
-    private static int ExportStyles(List<string> ids, string? outFile)
-    {
-        if (ids.Count == 0)
-        {
-            Console.Error.WriteLine(Loc.S(Lang,
-                "--export 至少需要一个样式 ID（用 --list 查看全部；收藏样式同样可导出）",
-                "--export needs at least one style ID (see --list; pinned styles work too)"));
-            return 2;
-        }
-
-        var byId = StyleCatalog.All.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
-        var styles = new List<TextStyle>();
-        var missing = new List<string>();
-        foreach (var id in ids)
-        {
-            if (byId.TryGetValue(id, out var style))
-            {
-                styles.Add(style);
-            }
-            else
-            {
-                missing.Add(id);
-            }
-        }
-
-        if (missing.Count > 0)
-        {
-            Console.Error.WriteLine(Loc.S(Lang,
-                $"未知样式 ID：{string.Join("、", missing)}（用 --list 查看全部）",
-                $"Unknown style ID(s): {string.Join(", ", missing)} (see --list)"));
-            return 2;
-        }
-
-        var packName = outFile is null
-            ? Loc.S(Lang, "导出包", "exported-pack")
-            : Path.GetFileNameWithoutExtension(outFile);
-        var json = StylePacks.Serialize(StylePacks.ExportStyles(styles, packName));
-        if (outFile is null)
-        {
-            Console.OutputEncoding = Encoding.UTF8;
-            Console.WriteLine(json);
-            return 0;
-        }
-
-        try
-        {
-            File.WriteAllText(outFile, json);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Console.Error.WriteLine(Loc.S(Lang, $"写入失败：{ex.Message}", $"Write failed: {ex.Message}"));
-            return 1;
-        }
-
-        Console.WriteLine(Loc.S(Lang, $"已导出 {styles.Count} 个样式 → {outFile}", $"Exported {styles.Count} styles → {outFile}"));
+        WriteWarnings(import);
         return 0;
     }
 }

@@ -25,7 +25,7 @@ internal sealed record DesktopSettings
     public string Theme { get; init; } = "light";       // light | dark | system
     public string PreviewSize { get; init; } = "medium"; // small | medium | large
     public bool LaunchAtLogin { get; init; }
-    public bool PrefillClipboard { get; init; } = true; // 唤出时预填剪贴板文字（关=保留上次输入）
+    public bool PrefillClipboard { get; init; }        // 唤出时预填剪贴板文字（关=保留上次输入）。默认关：刚复制的口令等不该明文出现在弹窗里
     public bool PrefillSelection { get; init; } = true; // 唤出时优先预填其它应用中选中的文字（UIA 只读，失败回退剪贴板）
     public bool PrefillSelectionPlus { get; init; }     // 预填兼容模式：UIA 失败时模拟 Ctrl+Insert 复制兜底（立即还原剪贴板）
     public bool HideAfterCopy { get; init; } = true;    // 复制后收起弹窗（关=留在原地，状态栏提示已复制）
@@ -107,7 +107,7 @@ internal sealed record DesktopSettings
         {
             var path = FilePath();
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(this, JsonOptions));
+            FancyText.Core.AtomicFile.WriteAllText(path, JsonSerializer.Serialize(this, JsonOptions));
         }
         catch (Exception)
         {
@@ -161,6 +161,11 @@ internal sealed record DesktopSettings
             }
 
             modifiers |= modifier;
+        }
+
+        if (modifiers == 0)
+        {
+            return null; // 裸键（如手改配置写成 "F"）会全局吞掉该键的输入
         }
 
         // 键名必须是具体键，不允许裸修饰键（如 "Ctrl+Shift"），否则会吞掉所有打字

@@ -187,12 +187,15 @@ public sealed class UsageState
 
             using var doc = JsonDocument.Parse(File.ReadAllText(ActiveStatePath));
             var root = doc.RootElement;
+            // 手改或旧版写出的文件可能有重复/超量：载入时去重并按上限截断
             if (root.TryGetProperty("pinned", out var pinned) && pinned.ValueKind == JsonValueKind.Array)
             {
                 _pinned = pinned.EnumerateArray()
                     .Where(e => e.ValueKind == JsonValueKind.String)
                     .Select(e => e.GetString()!)
                     .Where(s => !string.IsNullOrEmpty(s))
+                    .Distinct()
+                    .Take(PinnedCap)
                     .ToList();
             }
 
@@ -202,6 +205,8 @@ public sealed class UsageState
                     .Where(e => e.ValueKind == JsonValueKind.String)
                     .Select(e => e.GetString()!)
                     .Where(s => !string.IsNullOrEmpty(s))
+                    .Distinct()
+                    .Take(RecentCap)
                     .ToList();
             }
 
@@ -223,9 +228,21 @@ public sealed class UsageState
                     .ToList();
             }
         }
+        catch (JsonException)
+        {
+            // 状态文件损坏：留一份 .bad 备份再按空状态启动（否则下次保存就把它覆盖得无从查起）
+            try
+            {
+                File.Copy(ActiveStatePath, ActiveStatePath + ".bad", overwrite: true);
+            }
+            catch (Exception)
+            {
+                // 备份失败不影响启动
+            }
+        }
         catch (Exception)
         {
-            // 状态文件损坏时按空状态启动
+            // 读不到（占用/权限）时按空状态启动
         }
     }
 
@@ -240,7 +257,7 @@ public sealed class UsageState
                 json = JsonSerializer.Serialize(new { pinned = _pinned, recent = _recent, language = _language, disabledPacks = _disabledPacks }, JsonOptions);
             }
 
-            File.WriteAllText(ActiveStatePath, json);
+            AtomicFile.WriteAllText(ActiveStatePath, json); // 写一半崩溃也不会留下读不了的文件
         }
         catch (Exception)
         {

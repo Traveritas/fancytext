@@ -62,6 +62,7 @@ public static class StyleFactory
             throw new ArgumentException($"样式 {definition.Id} 使用自定义类别但缺少类名", nameof(definition));
         }
 
+        source ??= new StyleSource.BuiltIn();
         return new TextStyle
         {
             Id = definition.Id,
@@ -72,8 +73,11 @@ public static class StyleFactory
             Note = definition.Note,
             NoteEn = definition.NoteEn,
             Definition = definition,
-            Source = source ?? new StyleSource.BuiltIn(),
-            Transform = StyleInterpreter.Compile(definition.Steps),
+            Source = source,
+            // 外部包样式加输出上限与异常兜底（坏包不能拖垮预览）；内置样式保持原样
+            Transform = StyleInterpreter.Compile(
+                definition.Steps,
+                source is StyleSource.Pack ? PackGrowth.MaxPackOutputChars : null),
         };
     }
 }

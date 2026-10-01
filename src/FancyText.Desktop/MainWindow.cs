@@ -283,6 +283,9 @@ internal sealed class MainWindow : Window
     /// <summary>托盘提示用：当前生效的热键显示文本（如 Ctrl+Alt+F）。</summary>
     internal string HotkeyDisplay => _hotkey.Display;
 
+    /// <summary>全局热键是否注册成功（启动时被其它程序占用则为 false）。</summary>
+    internal bool HotkeyRegistered => _hotkeyRegistered;
+
     /// <summary>设置窗用：当前设置（record 只读快照）。</summary>
     internal DesktopSettings CurrentSettings => _settings;
 
@@ -1720,12 +1723,11 @@ internal sealed class MainWindow : Window
     internal void RefreshStyles()
     {
         _stylesById = StyleCatalog.All.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+        var input = _inputBox.Text; // 同 ApplySettings：装/卸包重建界面时保住用户输入
         BuildUi();
+        _inputBox.Text = input;
         RebuildList();
     }
-
-    /// <summary>收藏的样式（导出样式包用），保持收藏时间序。</summary>
-    internal IReadOnlyList<TextStyle> PinnedStyles => StylesByIds(_usage.Pinned).ToList();
 
     /// <summary>预览单行化并限长，防 Zalgo 之类撑爆测量。</summary>
     private static string OneLine(string text)
@@ -2105,7 +2107,7 @@ internal sealed class MainWindow : Window
 
         _hotkey = binding;
         _hotkeyRegistered = NativeMethods.RegisterHotKey(
-            handle, HotkeyId, binding.Modifiers, (uint)KeyInterop.VirtualKeyFromKey(binding.Key));
+            handle, HotkeyId, binding.Modifiers | NativeMethods.MOD_NOREPEAT, (uint)KeyInterop.VirtualKeyFromKey(binding.Key));
 
         var ok = _hotkeyRegistered;
         if (!ok)
@@ -2113,7 +2115,7 @@ internal sealed class MainWindow : Window
             // 回滚：把旧键注册回去，保持"仍可用旧键唤出"
             _hotkey = old;
             _hotkeyRegistered = NativeMethods.RegisterHotKey(
-                handle, HotkeyId, old.Modifiers, (uint)KeyInterop.VirtualKeyFromKey(old.Key));
+                handle, HotkeyId, old.Modifiers | NativeMethods.MOD_NOREPEAT, (uint)KeyInterop.VirtualKeyFromKey(old.Key));
             LogDiag($"hotkey: 换绑失败 combo={binding.Display} err={Marshal.GetLastWin32Error()}，保留 {old.Display}");
             return false;
         }
@@ -2140,14 +2142,18 @@ internal sealed class MainWindow : Window
             return;
         }
 
-        _hwndSource ??= HwndSource.FromHwnd(handle);
-        _hwndSource?.AddHook(WndProc);
+        if (_hwndSource is null)
+        {
+            // 只挂一次：注册失败后再次调用不能重复挂钩（否则一次热键消息会被处理多遍）
+            _hwndSource = HwndSource.FromHwnd(handle);
+            _hwndSource?.AddHook(WndProc);
+        }
 
-        // 注册失败（如热键被其它程序占用）不致命：托盘双击仍可唤出
+        // 注册失败（如热键被其它程序占用）不致命：托盘双击仍可唤出，托盘提示会写明
         _hotkeyRegistered = NativeMethods.RegisterHotKey(
             handle,
             HotkeyId,
-            _hotkey.Modifiers,
+            _hotkey.Modifiers | NativeMethods.MOD_NOREPEAT,
             (uint)KeyInterop.VirtualKeyFromKey(_hotkey.Key));
         LogDiag($"hotkey: 注册 {(_hotkeyRegistered ? "成功" : "失败")} combo={_hotkey.Display} err={Marshal.GetLastWin32Error()}");
     }

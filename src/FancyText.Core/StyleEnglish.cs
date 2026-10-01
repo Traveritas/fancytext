@@ -2,7 +2,7 @@ namespace FancyText.Core;
 
 /// <summary>
 /// 内置样式的英文层：NameEn / NoteEn 按 ID 补丁进 <see cref="StyleCatalog"/> 的内置定义（见 ApplyEnglish）。
-/// 定名依据 docs/01 调研报告的英文来源站（coolsymbol / lingojam 等）与 Unicode 正式区段名；
+/// 定名依据 docs/archive/01 调研报告的英文来源站（coolsymbol / lingojam 等）与 Unicode 正式区段名；
 /// 显示名中的装饰字符与序号（❶–❹、𝐁、❤ 等）原样保留。
 /// </summary>
 internal static class StyleEnglish

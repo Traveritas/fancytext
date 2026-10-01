@@ -6,47 +6,51 @@
 
 - **唤出即用**：全局热键 `Ctrl+Alt+F` 弹窗瞬间出现，选中文字预填在后台异步进行、不阻塞唤出；输入实时预览，`Enter` 复制全文并收起，全程一两秒。
 - **纯键盘操作友好**：焦点全程留在输入框，从唤出到复制不需要碰鼠标——`↑↓` 浏览、`Enter` 复制、`Ctrl+D` 收藏、`Ctrl+R` 随机、`Tab` 筛选分类、`→` 钻入同族样式；鼠标同样全程可用。
-- **快速、低占用**：托盘常驻，任务管理器观感 **~7-10MB**；桌面版/CLI **零第三方依赖**；简繁/拼音等大词典 gzip 嵌入、用到才加载；隐藏后自动修剪工作集。
-- **样式包可扩展**：样式是**纯数据**（声明式 JSON 管道，不含可执行代码），一文件一包、丢进目录即生效；设置页一键安装官方内嵌扩展包，或把收藏导出成包分享给他人；导入带安全校验（ID 冲突/孤立代理对/超限参数一律拦截）。
+- **快速、低占用**：托盘常驻，隐藏后修剪工作集，任务管理器观感 **~7–10MB**；零第三方依赖；简繁/拼音等大词典 gzip 嵌入、用到才加载。
+- **样式包可扩展**：样式是**纯数据**（声明式 JSON 管道，不含可执行代码），一文件一包；设置页一键安装 4 个官方包，或从在线索引获取社区包；做新包可以直接让 AI 助手按[样式包规范](docs/样式包规范.md)生成。
 - **任意机器不出现豆腐块**：内置 GDI 动态字体覆盖库，组合符按码点实时解析到已安装的系统字体，免配置。
 - **免安装绿色软件**：单文件自包含 exe（无需 .NET 运行时），解压即用；中英双语界面，明暗主题与强调色跟随系统。
 
-三种形态/同一引擎：**独立桌面版**、**PowerToys Command Palette 插件**、命令行工具 `fancy`。)
+同一引擎另有命令行工具 `fancy`（开发/脚本用途）。
 
-## 独立桌面版（主形态，无需 PowerToys）
+## 下载与运行
 
-WPF 弹窗式转换器：托盘常驻 + 全局热键。免安装绿色软件，单文件 exe（自包含，无需 .NET 运行时），与插件/CLI 共享同一引擎和收藏（`%LOCALAPPDATA%\FancyText\state.json`）。
-
-**下载**：GitHub Releases 的 `FancyText.Desktop-x.x.x-win-x64.zip`（解压即用），或自行构建：
+GitHub Releases 的 `FancyText.Desktop-x.x.x-win-x64.zip`，解压后双击 `FancyText.Desktop.exe`。或自行构建：
 
 ```bash
+tools/package.ps1     # 一键打包 zip 到 dist/
+# 或
 dotnet publish src/FancyText.Desktop -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
-# 或 tools/package.ps1 一键打包 zip
 ```
 
-- **唤出**：全局热键 `Ctrl+Alt+F`（设置页可视化换绑，占用自动回退旧键）、托盘双击、或再次运行 exe；单实例。
-- **弹窗**：Win11 Mica 系统材质，明暗主题自动跟随（设置页可切纯色；实现要点：无边框窗口需先 `DwmExtendFrameIntoClientArea(-1)` 扩展框架区，Mica 才有落笔处），唤出淡入上移入场、隐藏同款退出（167/200ms 与 150ms，跟随系统动画开关，可「减少动效」全关）；自动预填剪贴板（可关，无则示例文字），输入实时预览（150ms 防抖，预览只转换前 64 字素）；窗口出现在鼠标附近（可改主屏居中），点击别处自动隐藏。
-- **操作**：`Enter` 复制选中样式的**全文**转换并以退出动画收起；`Esc` 隐藏；`Ctrl+D` 收藏（⭐，插件同步可见）；`Ctrl+R` 随机换一个；`↑↓` 浏览。纯键盘模型（焦点全程留在输入框，按钮不进 Tab 链）：`Tab` 展开/收起筛选菜单（`↑↓` 选择、`Enter` 应用）；`Ctrl+Tab`/`Ctrl+Shift+Tab` 循环切换筛选；列表到顶再按 `↑` 或非族行按 `→` 进入按钮区，`←→` 在「全部 ▾」/⭐/🕘 间循环、`Enter` 激活、`↓`/`Esc` 回列表并恢复原选中；族条目 `→` 钻入、`←` 返回上一级（取舍：列表区非族行的 `→` 用于进按钮区，文本光标无法用键盘右移）。鼠标侧：`全部 ▾` 下拉 + ⭐/🕘 图标。
-- **家族目录钻取**：翅膀、删除线、菊花体、包围字、边框等 ≥4 个的同族样式在「全部/分类」视图折叠成一行族条目（族名 + 数量 ▸ + 代表预览），`Enter` 钻入只看该族（首行 ‹ 返回，`Esc` 先返回再隐藏）；收藏/最近视图始终平铺。样式包按包名归族（如「华丽装饰扩充」）。
-- **选中文字预填**：弹窗即时出现，同时后台读取其它应用中选中的文字（UIA 只读，不动剪贴板；主流浏览器/Office/记事本均支持），读到后回填——用户已开始输入则不打断；拿不到时弹窗里是剪贴板/示例文字，设置页可关。设置页另有「预填兼容模式（模拟复制）」（默认关，仅主开关开启时可用）：UIA 不支持的应用改用模拟 `Ctrl+Insert` 复制兜底（读后立即还原剪贴板，不用有中断语义的 Ctrl+C；UIA 判定无选中时自动跳过）。诊断日志默认关闭，设环境变量 `FANCYTEXT_DIAG=1` 后启动可排查（预填失败原因会写入 `diag.log`）。
-- **设置**（托盘右键 → 设置，全部即时生效）：主题（浅色/深色/跟随系统，系统切换明暗自动跟随）、背景材质（跟随系统 Mica / 纯色）、强调色（色板/自定义/**跟随系统强调色**，系统改色后自动跟随）、预览字号、减少动效、语言（中/英/跟随系统）、唤出快捷键录制、开机自启动、唤出时预填选中文字/剪贴板、复制后收起、弹窗位置。
-- **渲染**：花式字符横跨十余文字系统，内置 GDI 动态字体覆盖库（FontCoverage）——组合符按码点实时解析到覆盖它的系统字体，任意机器免配置不出现豆腐块；深浅主题全控件适配；Mica 走 DWM 系统材质（零应用侧缓冲），动效只动 Opacity/位移（GPU 合成，不用位图特效）。
-- **轻量**：隐藏 1.5s 后自动修剪工作集，任务管理器常驻观感 ~7-10MB。
+## 使用
 
-## 样式包：导入与分享
+- **唤出**：全局热键 `Ctrl+Alt+F`（设置页可视化换绑；换绑的键被占用时保留旧键）、托盘双击、或再次运行 exe；单实例。启动时热键若被其它程序占用，托盘提示会写明，可双击托盘唤出。
+- **弹窗**：Win11 Mica 系统材质，明暗主题自动跟随（可切纯色）；输入实时预览（150ms 防抖，预览只转换前 64 个字素）；窗口出现在鼠标附近（可改主屏居中），点击别处自动隐藏。
+- **操作**：`Enter` 复制选中样式的**全文**转换并收起；`Esc` 隐藏；`Ctrl+D` 收藏（⭐）；`Ctrl+R` 随机换一个；`↑↓` 浏览。`Tab` 展开/收起筛选菜单；`Ctrl+Tab`/`Ctrl+Shift+Tab` 循环切换筛选；列表到顶再按 `↑` 或非族行按 `→` 进入按钮区，`←→` 在「全部 ▾」/⭐/🕘 间循环、`Enter` 激活、`↓`/`Esc` 回列表；族条目 `→` 钻入、`←` 返回上一级。
+- **家族目录钻取**：翅膀、删除线、菊花体、包围字、边框等 ≥4 个的同族样式折叠成一行族条目，`Enter` 钻入只看该族；收藏/最近视图始终平铺。样式包按包名归族。
+- **预填**：
+  - 选中文字（默认开）：后台用 UIA 只读读取其它应用中选中的文字，不动剪贴板；主流浏览器/Office/记事本均支持。用户已开始输入则不打断。
+  - 兼容模式（默认关）：UIA 不支持的应用改用模拟 `Ctrl+Insert` 复制兜底，读后立即还原剪贴板。只备份还原纯文本格式，可能让刚复制的内容进入 Win+V 剪贴板历史。
+  - 剪贴板文字（**默认关**）：打开后唤出时预填剪贴板内容——注意刚复制的密码等会明文显示在弹窗里。
+- **设置**（托盘右键 → 设置，全部即时生效）：主题、背景材质、强调色（含跟随系统）、预览字号、减少动效、语言、唤出快捷键、开机自启动、上述预填选项、复制后收起、弹窗位置、样式包管理。
+- **诊断**：设环境变量 `FANCYTEXT_DIAG=1` 后启动，预填失败原因等写入 `%LOCALAPPDATA%\FancyText\diag.log`。
 
-样式在本引擎里是**纯数据**（声明式步骤管道，不含可执行代码），一组样式可以存成一个 `.json` 包文件互相分享：
+配置与数据都在 `%LOCALAPPDATA%\FancyText\`：`desktop.json` 设置、`state.json` 收藏/最近/语言/停用包、`styles\` 样式包。
 
-- **导入**：桌面版 设置 →「样式包」→ 导入样式包…；或把 `.json` 直接丢进 `%LOCALAPPDATA%\FancyText\styles\`（一文件一包，放下即生效）；命令行 `fancy --import 包.json`。
-- **导出**：桌面版设置页「导出收藏为包…」把收藏夹生成包文件；命令行 `fancy --export <样式ID…> --out 包.json`。
-- **官方扩展包**：exe 内嵌「华丽装饰扩充」（33 个装饰样式：成对括号/星花雪叶/线框角隅/分隔线等），设置页样式包面板一键安装，无需下载；与导入包同格式同校验。
-- **管理**：设置页样式包面板——每包可**停用/启用**（停用不删文件，样式即时从目录隐藏，三端一致）、卸载（损坏的包标红且只能卸载）、展开查看包内样式与当前文本的实时预览；`fancy --packs`（停用包有标记）/ `fancy --remove 包名`。
-- 桌面版导入/卸载/停启用即时生效；命令面板插件在面板进程重启后生效。列表中包样式的分类后会标注来源包名。
-- **安全校验**：ID 冲突（内置/其它包）拒绝导入；孤立代理对、控制字符、超限参数（映射条数/步骤数/文件大小 2MB）一律拦截。
-- 包格式、全部步骤写法与官方收录标准见 [docs/样式包规范.md](docs/样式包规范.md)（附可直接导入体验的 [docs/sample-pack.json](docs/sample-pack.json)）；样式可带可选 `nameEn` / `noteEn` 双语字段，英文名缺失时回退 `name`；`category` 支持 6 个内置类之外的**自定义类别**（界面原样显示）。
-- **在线获取**：设置 → 样式包 → 获取更多样式包，一键安装 [fancytext-styles 索引仓库](https://github.com/Traveritas/fancytext-styles) 里的包（raw 主通道 + jsDelivr 镜像回退）；社区可向该仓库 PR 上架新包；CLI：`fancy --online` / `fancy --online-install <id>`。
+## 样式包
 
-### 样式分类（130 个）
+样式在本引擎里是**纯数据**（声明式步骤管道），一组样式存成一个 `.json` 包文件：
+
+- **官方包**：exe 内嵌 4 个——华丽装饰（32）、叠加特效（28）、颜文字（22）、星月夜（10），设置 →「样式包」一键安装，内嵌版本更新后提示 [更新]。
+- **在线获取**：设置 → 样式包 → 获取更多样式包，一键安装 [fancytext-styles 索引仓库](https://github.com/Traveritas/fancytext-styles) 里的包（raw 主通道 + jsDelivr 镜像回退）；社区可向该仓库 PR 上架新包。
+- **导入**：设置 →「导入样式包…」；或把 `.json` 放进 `%LOCALAPPDATA%\FancyText\styles\`（重启程序后生效，没有目录监听）；命令行 `fancy --import 包.json`。
+- **管理**：每包可停用/启用（不删文件）、卸载（损坏的包标红且只能卸载）、展开查看包内样式与当前文本的实时预览。
+- **校验**：只拦会导致加载失败的内容（格式错误、ID 与内置或其他包冲突、孤立代理对/控制字符、超限参数）；覆盖已装的同名包、输出膨胀过大等情况照常安装并给出提示。坏包只影响自己，不会拖垮程序。
+
+包格式、全部步骤写法与官方收录标准见 [docs/样式包规范.md](docs/样式包规范.md)，可直接导入体验的示例见 [docs/sample-pack.json](docs/sample-pack.json)。
+
+### 内置样式（130 个）
 
 | 分类 | 数量 | 代表样式 |
 |---|---|---|
@@ -56,18 +60,6 @@ dotnet publish src/FancyText.Desktop -c Release -r win-x64 --self-contained true
 | 变换 | 8 | 倒转 oʇʇǝ、镜像、倒序、Leet、全大写/全小写/交替大小写、还原（去装饰） |
 | 中文 | 6 | 火星文（2088 字字典）、火星文还原、简→繁 / 繁→简（OpenCC 词级消歧：头发→頭髮）、拼音（带调 nǐ hǎo）、拼音缩写（nhm） |
 | 编码 | 8 | Base64、ROT13、摩斯电码、盲文 ⠓⠑⠇⠇⠕、NATO、A1Z26、二进制、十六进制 |
-
-## Command Palette 插件（维护模式）
-
-> 插件端已转入**维护模式**：引擎持续跟随（新样式/包机制自动受益），UI 不再投入新功能——SDK 的列表页模型无法承载桌面端的 Mica/动效/自定义渲染，且宿主进程（Microsoft.CmdPal.UI，实测常驻 ~200MB+）不属于本项目可控范围。当前主形态为桌面版（实测宿主+插件合计 ~230MB vs 桌面版常驻 ~7-10MB）。
-
-- **两级导航**：首页按分类展示（特效 / 英文/字母花体 / 装饰 / 变换 / 中文 / 编码，外加「全部样式」），每类入口的副标题实时预览代表样式效果与当前文本下的可用数量；回车进入二级页浏览该分类全部样式，面包屑返回。
-- **根搜索框直转**：在 Command Palette 根搜索框输入任意文字 → 「花式文字转换」回车，首页直接跟随你输入的内容（Fallback query 实时同步）。
-- **收藏 + 最近使用**：样式上右键即可收藏（⭐），收藏与最近使用的样式会出现在首页顶部，**回车直接复制**，不用进二级页；状态持久化到本地。
-- **自动取剪贴板**：搜索框为空时自动转换剪贴板内容。
-- **实时预览**：二级页每个样式一行，标题即转换结果；详情页显示完整结果、实现机制（码点）与原文。
-- **回车复制**，Toast 反馈；右键有「复制并保持打开」「收藏」等命令。
-- **中英双语**：与桌面版共享同一语言偏好（`state.json`），插件在面板进程重启后生效。
 
 ## 命令行工具（开发/脚本用途）
 
@@ -81,118 +73,90 @@ fancy --random "你好"       # 随机样式
 fancy --json "你好"         # JSON 输出（供其它程序消费）
 fancy --import 包.json      # 导入样式包
 fancy --packs               # 列出已安装的样式包（含停用标记）
-fancy --export bold morse --out 我的包.json   # 导出样式为可分享的包
 fancy --remove 包名         # 卸载样式包
+fancy --online              # 列出在线索引；--online-install <id> 安装
+fancy --help / --version
+fancy bold -- --text        # -- 之后全部当文本
 ```
+
+未知选项返回退出码 2；`--json` / `--random` 后的位置参数全部当作文本。
 
 ## 设计理念：占用少、轻量化
 
 常驻工具，轻量是硬约束而非加分项：
 
-- **引擎**：预览只转换有界文本（前 64 字素）、输入防抖、列表项持久复用——开销与"刷新次数 × 文本长度"解耦；
-- **依赖**：桌面版/CLI 零 NuGet 包；扩展仅 CmdPal SDK + WindowsAppSDK 必需项；
-- **渲染**：桌面版圆角/阴影/背景 Mica 材质走 Win11 DWM 系统特性（零额外缓冲），曾实测 `AllowsTransparency + DropShadowEffect` 位图特效会把工作集从 ~145MB 推到 ~190MB，已弃用；动效只动 Opacity/RenderTransform（不触发布局、不用位图特效），跟随系统动画总开关；
-- 当前实测水位（供回归对照，Win11 26100）：桌面版常驻 **~7-10MB**（隐藏后 EmptyWorkingSet 修剪；首次唤出瞬时 ~220MB 含字体/词典/动画基础设施预热、稳态唤出 ~100MB，用后 1.5s 回落常驻水位）；命令行工具单文件 270KB；扩展进程约 26-56MB（宿主 Microsoft.CmdPal.UI 实测 ~200MB+，不可控）。
+- **引擎**：预览只转换有界文本（前 64 字素）、输入防抖——开销与「刷新次数 × 文本长度」解耦；
+- **依赖**：桌面版/CLI 零 NuGet 包；
+- **渲染**：圆角/背景 Mica 走 Win11 DWM 系统特性（零额外缓冲），曾实测 `AllowsTransparency + DropShadowEffect` 位图特效会把工作集从 ~145MB 推到 ~190MB，已弃用；动效只动 Opacity/RenderTransform，跟随系统动画总开关；
+- **实测水位**（Win11 26100，供回归对照）：首次唤出瞬时 ~220MB（字体/词典/动画预热），稳态唤出 ~100MB；隐藏 1.5s 后修剪工作集，任务管理器观感 ~7–10MB（私有内存仍约 100MB，修剪的是工作集）。开机自启后从未唤出过时尚未修剪。命令行工具单文件 270KB。
+
+引擎基准（`dotnet run --project tests/FancyText.Core.Tests -- bench`）：全目录 × 64 字输入，约 0.2ms/次。
 
 ## 项目结构
 
 ```
-src/FancyText.Core/        转换引擎（无 UI 依赖，三端共用）
+src/FancyText.Core/        转换引擎（无 UI 依赖）
   TextTransforms.cs        四个正交原语：MapReplace / AppendMark / WrapString+WrapEach / Spacing+Reverse
-  ZalgoTransformer.cs      魔鬼文字（上/中/下三组组合符随机叠加，强度可调，可反向清洗）
+  ZalgoTransformer.cs      魔鬼文字（上/中/下三组组合符随机叠加，强度可调）
   LatinMaps.cs             拉丁映射表（数学字母区段+洞字符、带圈/方块、全角、上下标、倒转/镜像、盲文…）
-  MartianDictionary.cs     火星文字典加载（嵌入资源，Rune 对齐）
-  StyleCatalog.cs(.Expanded)  全部 130 个内置样式（声明式 StyleDefinition 定义）
+  MartianDictionary.cs     火星文字典加载（嵌入资源）
+  StyleCatalog.cs(.Expanded)  全部 130 个内置样式（声明式 StyleDefinition 定义）+ 包样式合并目录
   StyleFamilies.cs         家族聚族表（kebab 前缀 → 族，供目录钻取）
-  ChineseText.cs            简⇄繁（OpenCC 词级贪心最长匹配）与拼音转换；词典 gzip 嵌入、惰性加载（不用不占内存）
-  StyleDefinition.cs       样式定义 DTO + StyleFactory（定义 → 可执行 TextStyle，含来源标记）
-  TransformStep.cs         声明式步骤层次（查表/引用内置表/附加组合符/包围/分隔/倒序/算法/守卫）
-  StyleInterpreter.cs      步骤管道 → 委托（构建期一次编译，运行时纯委托链）
-  StylePack.cs             样式包模型、校验、导入/导出/扫描/卸载、内嵌官方包（LoadBundled/InstallBundled）
+  ChineseText.cs           简⇄繁（OpenCC 词级贪心最长匹配）与拼音；词典 gzip 嵌入、惰性加载
+  StyleDefinition.cs       样式定义 + StyleFactory（定义 → 可执行 TextStyle）
+  TransformStep.cs         声明式步骤（查表/引用内置表/附加组合符/包围/分隔/倒序/算法/守卫）
+  StyleInterpreter.cs      步骤管道 → 委托链；外部包样式加输出上限与异常兜底
+  StylePack.cs             样式包模型、校验、导入/扫描/卸载、内嵌官方包
+  PackGrowth.cs            样式包输出膨胀估算（安装时警告）
   StylePackJson.cs         包 JSON 的 op 判别转换器 + 分类/算法 kebab 命名
-  StyleEnglish.cs          内置样式的英文层（NameEn/NoteEn 按 ID 补丁）
-  Localization.cs          AppLanguage / Loc.S —— 三端共用的中英双语机制
-  UsageState.cs            收藏/最近/语言/停用包（%LOCALAPPDATA%\FancyText\state.json，三端共享）
-  KnownTransforms.cs       内置命名映射表与算法注册表（UseMap / Algorithm 的引用目标）
+  StyleRegistry.cs         在线索引拉取与下载
+  StyleEnglish.cs          内置样式的英文名/说明
+  Localization.cs          中英双语机制
+  UsageState.cs            收藏/最近/语言/停用包（state.json）
+  KnownTransforms.cs       内置命名映射表与算法注册表
   EncodingTransforms.cs    NATO / A1Z26 / 二进制 / 十六进制 / 交替大小写
-  Resources/spark-simple.json  cnchar 火星文字典（MIT）
-  Resources/opencc-*.txt.gz    OpenCC 简⇄繁词典（Apache-2.0，词级消歧）
-  Resources/pinyin.txt.gz      拼音数据（mozillazg/pinyin-data，MIT）
-  Resources/bundled/*.json     官方扩展包（内嵌一键安装）
-src/FancyText.Desktop/     独立桌面版（WPF：全局热键 + 托盘 + 弹窗转换器，主形态）
-src/FancyText.CmdPal/      Command Palette 扩展（WinUI3 / MSIX，维护模式）
-src/FancyText.Cli/         命令行工具 fancy（--list/--json/--random/单样式）
-tests/FancyText.Core.Tests/  自检测试（267 项断言）+ `-- demo`（效果预览）+ `-- bench`（性能基准）
-reference/                 参考项目（ChangeCaseExtension、cnchar 克隆，仅研读，不参与构建）
-docs/                      调研报告、独立工具探索、UI 设计稿（ui-mockups/）、品牌资产（brand/）
+  Resources/               火星文字典（cnchar, MIT）、OpenCC 简繁词典（Apache-2.0）、拼音数据（MIT）、bundled/ 官方包
+src/FancyText.Desktop/     桌面版（WPF：全局热键 + 托盘 + 弹窗转换器）
+src/FancyText.Cli/         命令行工具 fancy
+src/FancyText.CmdPal/      PowerToys Command Palette 插件（已停止维护，见下）
+src/FancyText.FontProbe/   字体覆盖探测小工具（开发用，不在解决方案内）
+tests/FancyText.Core.Tests/  引擎自检测试 + demo / bench / audit 子命令
+tools/                     打包、图标生成与各类 UI 验证脚本
+docs/                      样式包规范、示例包、UI 设计稿、品牌资产；archive/ 为早期调研存档
 ```
 
-## 性能设计
+## 构建与测试
 
-目标是让扩展与命令面板宿主（Microsoft.CmdPal.UI）两侧的内存开销都与「刷新次数 × 文本长度」解耦：
-
-- **列表项持久复用**：各页的 ListItem/命令/Details/Tag 对象只创建一次，刷新只更新属性——宿主侧 WinRT 包装对象数量恒定；
-- 预览只转换输入的**前 64 个字素**（增量截断，与全文长度无关）；回车复制时才对全文做转换；
-- 重建有 250ms 防抖，文本未变化直接跳过；剪贴板 3 秒缓存；
-- Toast 结果 / 图标 / 分类 Tag 全部静态复用；共享文本变更经事件广播，页面按需重建。
-
-引擎基准（`dotnet run --project tests/FancyText.Core.Tests -- bench`）：全目录 × 64 字输入，约 0.2ms/次、~80KB 临时分配（gen0 即回收）。
-
-诊断：每次列表重建向 `%LOCALAPPDATA%\FancyText\diag.log` 写一行（托管内存/工作集/GC 次数），文件超 1MB 自动清理。
-
-## 构建与安装
-
-要求：
-- .NET SDK **10** + **Windows SDK 10.0.26100**（`winget install Microsoft.WindowsSDK.10.0.26100`）
-- `Microsoft.CommandPalette.Extensions` 锁定在 **0.6.251022008**（0.11+ 需要 .NET 10 时代的更新投影，暂不升）
-- 扩展目标框架为 `net9.0-windows10.0.22621.0`（0.6 版 Toolkit 按 net9 编译）
-- Windows 10 19041+（实际建议 Win11 + PowerToys ≥ 0.90）
+要求：.NET SDK 10（构建 net8.0 目标）；运行测试需要 .NET 8 运行时；Windows 10 19041+（建议 Win11）。
 
 ```bash
-# 运行引擎测试（267 项断言，含样式包全链路与简繁词级消歧）
+# 引擎测试（336 项断言，含样式包全链路与简繁词级消歧；失败退出码 1）
 dotnet run --project tests/FancyText.Core.Tests
 
 # 效果预览（不进 UI，直接打印全部样式的转换结果）
 dotnet run --project tests/FancyText.Core.Tests -- demo "你好 Hello"
 
-# 桌面版构建/打包（见「独立桌面版」一节）
+# 样式包重复审计（与内置样式输出重复则返回 1）
+dotnet run --project tests/FancyText.Core.Tests -- audit 我的包.json
+
+# 桌面版打包
 tools/package.ps1
-
-# 编译扩展（x64）
-dotnet build src/FancyText.CmdPal -p:Platform=x64
-
-# 打包 MSIX（产出 AppPackages\FancyText.CmdPal_1.0.0.0_x64_Test\）
-dotnet publish src/FancyText.CmdPal -c Release -r win-x64 -p:Platform=x64 \
-  -p:AppxPackageSigningEnabled=true -p:UapAppxPackageBuildMode=SideloadOnly \
-  -p:GenerateAppxPackageOnBuild=true -p:AppxBundle=Never \
-  -p:PackageCertificateThumbprint=35F932FE9A128E0BDB6DBEBDE2A562AA369DFCDB
 ```
 
-签名说明：仓库附带开发用自签名证书 `src/FancyText.CmdPal/FancyText.DevKey.pfx`（CN=FancyText，与清单 Publisher 一致，导出密码 `FancyTextDev`，指纹见上方命令），对应私钥也在当前用户证书存储 `Cert:\CurrentUser\My` 中。换机或丢失时重新生成：
+版本号统一在 `Directory.Build.props`。
 
-```powershell
-$cert = New-SelfSignedCertificate -Type Custom -Subject 'CN=FancyText' -KeyUsage DigitalSignature `
-  -CertStoreLocation 'Cert:\CurrentUser\My' -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3','2.5.29.19={text}')
-Export-PfxCertificate -Cert $cert -FilePath src\FancyText.CmdPal\FancyText.DevKey.pfx -Password (ConvertTo-SecureString 'FancyTextDev' -Force -AsPlainText)
-# 然后用新指纹替换命令中的 PackageCertificateThumbprint，并同步更新清单 Publisher
-```
+## Command Palette 插件（已停止维护）
 
-安装（旁加载）：
-1. Windows 设置 → 系统 → 开发者选项 → 启用**开发者模式**。
-2. 进入 `AppPackages\FancyText.CmdPal_1.0.0.0_x64_Test\`，右键 `Add-AppDevPackage.ps1` → **使用 PowerShell 运行**（会一并安装配套证书与依赖）。
-3. 打开 Command Palette（Win+Alt+Space），搜索「花式文字」；直接在根搜索框输入文字也会出现 fallback 项。
+`src/FancyText.CmdPal` 是早期的 PowerToys Command Palette 插件形态，**已停止维护、不再分发**：SDK 的列表页模型承载不了桌面版的交互与渲染，宿主进程常驻 ~200MB+ 也不在本项目可控范围。代码暂留仓库供参考，不保证能与当前引擎一起正常工作；仓库不再附带签名证书，如需自行构建 MSIX，请用自己的证书签名。
 
-卸载：设置 → 应用 → 花式文字。正式分发（微软商店 / WinGet / 官方 Gallery）前，请把 Identity Publisher 换成自己的发布者身份并重新签名。
+## 已知限制
 
-## 已知限制 / 路线图
-
-- 魔鬼文字是随机的，复制形态与预览不完全一致（计划加「换一批」右键命令）；
-- 样式包为纯数据格式，无在线包仓库（当前靠文件分享 + 官方内嵌包；网页版包编辑器排期中）；
-- 组合符渲染因平台/字体而异（手机与游戏内最佳，PC 部分字体显示方块）——详情页已标注码点；
-- 火星文为字典逐字替换，不含语气词与符号装饰的完整「火星文风格」；
-- 插件端维护模式（见上节）；独立网页版（单文件 HTML）见 docs/02 的路线建议。
+- 魔鬼文字是随机的，复制形态与预览不完全一致；
+- 组合符渲染因平台/字体而异（手机与游戏内最佳，PC 部分字体显示方块）；
+- 火星文为字典逐字替换，还原为尽力而为（部分火星字形对应多个原字）；
+- 拼音按单字取音，无词级多音字消歧（如「重庆」）。
 
 ## 许可
 
 - **本项目代码**：MIT，见 [LICENSE](LICENSE)（版权人 Traveritas）
-- **第三方组件与内嵌词典数据**：完整清单、版本与许可全文见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)——含 .NET 运行时（MIT）、Command Palette SDK / CsWinRT / WinRTServer（MIT）、Windows App SDK（微软软件许可条款，允许随应用再分发）、[cnchar](https://github.com/theajack/cnchar) 火星文字典（MIT）、[OpenCC](https://github.com/BYVoid/OpenCC) 简⇄繁词表（Apache-2.0）、[mozillazg/pinyin-data](https://github.com/mozillazg/pinyin-data) 拼音数据（MIT；其中源自 Unihan 的部分适用 Unicode 许可）
+- **第三方组件与内嵌词典数据**：完整清单、版本与许可全文见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)——含 .NET 运行时（MIT）、[cnchar](https://github.com/theajack/cnchar) 火星文字典（MIT）、[OpenCC](https://github.com/BYVoid/OpenCC) 简⇄繁词表（Apache-2.0）、[mozillazg/pinyin-data](https://github.com/mozillazg/pinyin-data) 拼音数据（MIT；其中源自 Unihan 的部分适用 Unicode 许可）
