@@ -224,12 +224,14 @@ public static class Program
             category = s.CategoryKey,
             output = SafeTransform(s, text),
         });
-        Console.WriteLine(JsonSerializer.Serialize(payload, new JsonSerializerOptions
-        {
-            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            WriteIndented = false,
-        }));
+        Console.WriteLine(JsonSerializer.Serialize(payload, JsonOutputOptions));
     }
+
+    private static readonly JsonSerializerOptions JsonOutputOptions = new()
+    {
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        WriteIndented = false,
+    };
 
     private static string OneLine(string text)
     {

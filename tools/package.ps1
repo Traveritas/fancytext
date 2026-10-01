@@ -8,7 +8,8 @@ $props = [xml][IO.File]::ReadAllText((Join-Path $root 'Directory.Build.props'), 
 $version = ($props.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version
 if (-not $version) { throw 'cannot read Version from Directory.Build.props' }
 $outDir = Join-Path $root 'dist'
-$stage = Join-Path $outDir "FancyText.Desktop-$version"
+# 临时目录带 .stage 前缀：不能和解压出来试用的 FancyText.Desktop-x.y.z 同名，否则打包会把它删掉
+$stage = Join-Path $outDir ".stage-FancyText.Desktop-$version"
 $zipPath = Join-Path $outDir "FancyText.Desktop-$version-win-x64.zip"
 
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }

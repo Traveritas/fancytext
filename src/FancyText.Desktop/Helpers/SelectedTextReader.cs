@@ -195,7 +195,7 @@ internal static class SelectedTextReader
 
         try
         {
-            GetWindowThreadProcessId(knownForeground, out var pid);
+            _ = GetWindowThreadProcessId(knownForeground, out var pid); // 失败时 pid=0，下面的比较自然为 false
             return element.Current.ProcessId == pid;
         }
         catch (Exception)

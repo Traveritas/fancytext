@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace FancyText.Desktop.Helpers;
 
-/// <summary>桌面版用到的 Win32 互操作：全局热键注册 + 托盘图标句柄回收。</summary>
+/// <summary>桌面版用到的 Win32 互操作：全局热键注册、按显示器取 DPI、DWM 窗口属性。</summary>
 internal static class NativeMethods
 {
     // RegisterHotKey 的修饰键位掩码（fsModifiers）
@@ -19,11 +19,6 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
-
-    /// <summary>NotifyIcon 图标由 bitmap.GetHicon() 创建，句柄不归 Icon 对象管，需自毁防泄漏。</summary>
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool DestroyIcon(IntPtr hIcon);
 
     // ---------- 按显示器取 DPI（弹窗定位需要鼠标所在显示器的缩放比） ----------
 
@@ -44,23 +39,6 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetCursorPos(out POINT pt);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool SetCursorPos(int x, int y);
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct RECT
-    {
-        public int Left, Top, Right, Bottom;
-    }
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
-
-    [DllImport("user32.dll")]
-    public static extern IntPtr FindWindow(string? className, string? windowName);
 
     /// <summary>Win11 圆角等窗口属性（DWMWA_WINDOW_CORNER_PREFERENCE=33）。返回 HRESULT，0=成功。</summary>
     [DllImport("dwmapi.dll")]

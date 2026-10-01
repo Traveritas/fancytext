@@ -179,7 +179,7 @@ internal static class FontCoverage
             {
                 if (hdc != IntPtr.Zero)
                 {
-                    ReleaseDC(IntPtr.Zero, hdc);
+                    _ = ReleaseDC(IntPtr.Zero, hdc);
                 }
             }
 
@@ -214,13 +214,13 @@ internal static class FontCoverage
                 lfCharSet = DEFAULT_CHARSET, // 全字符集枚举
                 lfFaceName = string.Empty,
             };
-            EnumFontFamiliesExW(hdc, ref lf, callback, IntPtr.Zero, 0);
+            _ = EnumFontFamiliesExW(hdc, ref lf, callback, IntPtr.Zero, 0); // 返回值是最后一次回调的返回值，无错误语义
         }
         finally
         {
             if (hdc != IntPtr.Zero)
             {
-                ReleaseDC(IntPtr.Zero, hdc);
+                _ = ReleaseDC(IntPtr.Zero, hdc);
             }
         }
 

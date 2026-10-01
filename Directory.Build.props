@@ -4,6 +4,9 @@
     <PlatformTarget>$(Platform)</PlatformTarget>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisMode>Recommended</AnalysisMode>
+    <!-- 刻意关闭的建议：CA1859 内部方法返回只读接口是有意的封装（防止调用方改共享映射表）；
+         CA1711 MartianDictionary 是领域名（火星文字典），不是集合类型；CA1000 RegistryResult<T>.Ok/Fail 是常见的工厂写法 -->
+    <NoWarn>$(NoWarn);CA1859;CA1711;CA1000</NoWarn>
     <NuGetAuditMode>direct</NuGetAuditMode>
 
     <!-- 版本号单一真源：桌面版 / CLI / Core 共用，tools/package.ps1 也从这里读 -->

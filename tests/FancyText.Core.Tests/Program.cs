@@ -984,9 +984,9 @@ public static class Program
         // 官方包矩阵：deco-wings + 星月夜 / 叠加特效 / 颜文字，共 4 个（火星文包已退役——正向/还原/去装饰全部内置）
         var coreBundled = StylePacks.LoadBundled();
         Check(coreBundled.Count == 4, "Core 内嵌官方包共 4 个", $"实际 {coreBundled.Count} 个");
+        string[] expectedPacks = ["叠加特效", "星月夜", "华丽装饰", "颜文字"];
         Check(coreBundled.Select(p => p.PackName).OrderBy(n => n, StringComparer.Ordinal).SequenceEqual(
-            new[] { "叠加特效", "星月夜", "华丽装饰", "颜文字" }
-                .OrderBy(n => n, StringComparer.Ordinal)), "官方包名单齐整（火星文已退役）");
+            expectedPacks.OrderBy(n => n, StringComparer.Ordinal)), "官方包名单齐整（火星文已退役）");
         Check(coreBundled.All(p => p.Styles.All(s => !string.IsNullOrEmpty(s.NameEn) && !string.IsNullOrEmpty(s.NoteEn))),
             "官方包样式双语齐备（nameEn/noteEn）");
         var builtInIds = StyleCatalog.BuiltInIds.ToHashSet(StringComparer.Ordinal);
