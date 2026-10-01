@@ -981,10 +981,10 @@ public static class Program
         // 内嵌官方包已落地（deco-wings-pack.json）：枚举非空且逐个解析健康（glob 暂缺时回退为空）
         Check(StylePacks.LoadBundled().All(p => p.Styles.Count > 0 && !string.IsNullOrEmpty(p.PackName)), "Core 程序集 LoadBundled 解析健康");
 
-        // 官方包矩阵：deco-wings + 星月夜 / 叠加特效 / 颜文字，共 4 个（火星文包已退役——正向/还原/去装饰全部内置）
+        // 官方包矩阵：华丽装饰 / 星月夜 / 叠加特效 / 颜文字 / 生僻变换，共 5 个（火星文包已退役——正向/还原/去装饰全部内置）
         var coreBundled = StylePacks.LoadBundled();
-        Check(coreBundled.Count == 4, "Core 内嵌官方包共 4 个", $"实际 {coreBundled.Count} 个");
-        string[] expectedPacks = ["叠加特效", "星月夜", "华丽装饰", "颜文字"];
+        Check(coreBundled.Count == 5, "Core 内嵌官方包共 5 个", $"实际 {coreBundled.Count} 个");
+        string[] expectedPacks = ["叠加特效", "星月夜", "华丽装饰", "颜文字", "生僻变换"];
         Check(coreBundled.Select(p => p.PackName).OrderBy(n => n, StringComparer.Ordinal).SequenceEqual(
             expectedPacks.OrderBy(n => n, StringComparer.Ordinal)), "官方包名单齐整（火星文已退役）");
         Check(coreBundled.All(p => p.Styles.All(s => !string.IsNullOrEmpty(s.NameEn) && !string.IsNullOrEmpty(s.NoteEn))),
@@ -998,12 +998,13 @@ public static class Program
         Check(bundledStyles["kao-joy-smile"].Transform("你好") == "你好 (´ω｀)", "颜文字后缀");
         Check(bundledStyles["mark-tiny-a"].Transform("a") == "a\u0363", "头顶小字母 a");
         Check(bundledStyles["kao-words-happy"].Transform("爱笑") == "(｡♡‿♡｡)(´ω｀)", "情绪字映射");
+        Check(bundledStyles["rare-stack"].Transform("火") == "焱" && bundledStyles["rare-caps"].Transform("一") == "壹", "生僻变换：三叠字 / 大写数字");
         // 按用户标准移除的重复样式不得回归：与内置同款（✦☾/✧･ﾟ/逐字星/双星点/火星文全家族）、可两步组合（组合管道/力度档/删+划）
         foreach (var removed in new[]
                  {
                      "starry-day-night", "starry-glow", "starry-each-star", "starry-mark-double-dot", "starry-night-combo",
                      "mark-sweat", "mark-juhua-double", "mark-juhua-triple", "mark-strike-under",
-                     "mars-reverse", "mars-reverse-plain", "mars-star", "deco-digits-negative",
+                     "mars-reverse", "mars-reverse-plain", "mars-star", "deco-digits-negative", "starry-each-degree",
                  })
         {
             Check(!bundledStyles.ContainsKey(removed), $"重复样式未收录：{removed}");
@@ -1148,11 +1149,10 @@ public static class Program
         Check(Find("pinyin").NameEn == "Pinyin (toned) nǐ hǎo", "中文扩充英文层");
     }
 
-    /// <summary>家族聚族：前缀归类（含规格指定族与实测 ≥4 的 enclose/border/bold/sans）、包样式归包、未归类为 null、双语族名。</summary>
+    /// <summary>家族聚族：显式成员表归类、包样式归包、未登记为 null、双语族名、成员表与目录一致。</summary>
     private static void TestStyleFamilies()
     {
         Console.WriteLine("样式家族：");
-        // 前缀归类：kebab 首段命中聚族表（无 "-" 的 ID 取全名匹配）
         Check(StyleFamilies.GetFamilyKey(Find("wing-elegant")) == "wing", "wing-elegant 归 wing 族");
         Check(StyleFamilies.GetFamilyKey(Find("juhua-1")) == "juhua", "juhua-1 归 juhua 族");
         Check(StyleFamilies.GetFamilyKey(Find("strikethrough")) == "strikethrough", "无连字符 ID 按全名归 strikethrough 族");
@@ -1163,12 +1163,19 @@ public static class Program
         Check(StyleFamilies.GetFamilyKey(Find("zalgo-max")) == "zalgo", "zalgo-max 归 zalgo 族");
         Check(StyleFamilies.GetFamilyKey(Find("enclose-circle")) == "enclose", "enclose-circle 归 enclose 族");
         Check(StyleFamilies.GetFamilyKey(Find("border-star")) == "border", "border-star 归 border 族");
-        Check(StyleFamilies.GetFamilyKey(Find("bold-italic")) == "bold", "bold-italic 归 bold 族");
         Check(StyleFamilies.GetFamilyKey(Find("sans-bold-italic")) == "sans", "sans-bold-italic 归 sans 族");
 
-        // 未归类为 null：首段不在表内（manipuri-underline 的首段是 manipuri，"后缀含 underline"不算）
+        // 归族与 ID 首段解耦：wing- 前缀的边框/藏式花纹各归其族，bold- 前缀不再成族（花体平铺）
+        Check(StyleFamilies.GetFamilyKey(Find("wing-cloud")) == "border", "wing-cloud（云朵边框）归 border 族");
+        Check(StyleFamilies.GetFamilyKey(Find("wing-starmoon")) == "border", "wing-starmoon（星月装饰）归 border 族");
+        Check(StyleFamilies.GetFamilyKey(Find("wing-mystic")) == "tibetan", "wing-mystic 归 tibetan 族");
+        Check(StyleFamilies.GetFamilyKey(Find("wing-angel")) == "wing", "wing-angel（小翅膀）仍归 wing 族");
+        Check(StyleFamilies.GetFamilyKey(Find("bold-script")) is null, "bold-script（花体）不折叠");
+        Check(StyleFamilies.GetFamilyKey(Find("bold")) is null, "bold 不成族");
+
+        // 未登记为 null
         Check(StyleFamilies.GetFamilyKey(Find("manipuri-underline")) is null, "manipuri-underline 不按后缀归族");
-        Check(StyleFamilies.GetFamilyKey(Find("circled")) is null, "circled 成员不足阈值未进表");
+        Check(StyleFamilies.GetFamilyKey(Find("circled")) is null, "circled 未登记无族");
         Check(StyleFamilies.GetFamilyKey(Find("mirror")) is null, "mirror 无族");
 
         // 包样式一律按包聚族（与 ID 形态无关）
@@ -1178,7 +1185,8 @@ public static class Program
             Transform = s => s, Source = new StyleSource.Pack("华丽装饰扩充"),
         };
         Check(StyleFamilies.GetFamilyKey(packStyle) == "pack:华丽装饰扩充", "包样式按包聚族");
-        Check(StyleFamilies.GetFamilyKey(Find("bold")) == "bold", "内置 bold 归 bold 族（Source 不影响）");
+        var packNamedLikeWing = packStyle with { Id = "wing-classic" };
+        Check(StyleFamilies.GetFamilyKey(packNamedLikeWing) == "pack:华丽装饰扩充", "包样式不查内置成员表（ID 撞名也按包聚族）");
 
         // 双语族名：内置按语言，包族返回包名原文，未知键原样兜底
         Check(StyleFamilies.FamilyDisplayName("wing", AppLanguage.Chinese) == "翅膀", "wing 族中文名");
@@ -1194,29 +1202,33 @@ public static class Program
                 .All(k => StyleFamilies.FamilyDisplayName(k!, AppLanguage.Chinese) != k
                        && StyleFamilies.FamilyDisplayName(k!, AppLanguage.English) != k),
             "内置归族键均有双语名");
-        Check(builtIn.Count(s => StyleFamilies.GetFamilyKey(s) == "wing") >= StyleFamilies.MinMembersToGroup,
-            "wing 族实测成员数达到折叠阈值");
-
         // 全量一致性①：表内每族都达到折叠阈值（防 ID 增改导致某族静默跌出后无人察觉；
         // 规格指定的 underline/overline/smoke/zalgo 是"归族但暂不满阈值"的白名单，扩到阈值后须自动折叠）
         var specAllowedBelow = new HashSet<string> { "underline", "overline", "smoke", "zalgo" };
-        foreach (var key in StyleFamilies.KnownPrefixes)
+        foreach (var key in StyleFamilies.KnownKeys)
         {
             var count = builtIn.Count(s => StyleFamilies.GetFamilyKey(s) == key);
             Check(count >= StyleFamilies.MinMembersToGroup || specAllowedBelow.Contains(key),
                 $"族 {key} 成员数与收录承诺一致（{count}）");
         }
 
-        // 全量一致性②：表外首段均不足阈值（防"该收未收"的静默漏收；包样式不参与此断言）
-        var tableSet = StyleFamilies.KnownPrefixes.ToHashSet(StringComparer.Ordinal);
-        var outside = builtIn
-            .Where(s => StyleFamilies.GetFamilyKey(s) is null)
-            .GroupBy(s => s.Id.Split('-')[0])
-            .Where(g => g.Count() >= StyleFamilies.MinMembersToGroup && !tableSet.Contains(g.Key))
-            .Select(g => g.Key)
+        Check(builtIn.Count(s => StyleFamilies.GetFamilyKey(s) == "wing") == 13
+            && builtIn.Count(s => StyleFamilies.GetFamilyKey(s) == "tibetan") == 7
+            && builtIn.Count(s => StyleFamilies.GetFamilyKey(s) == "border") == 12,
+            "装饰三族拆分：翅膀 13 / 藏式花纹 7 / 边框 12");
+
+        // 全量一致性②：成员表里的 ID 都是现存内置样式（防改名/删除后表里留死条目）
+        var builtInIdSet = builtIn.Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
+        var stale = StyleFamilies.Members.SelectMany(kv => kv.Value).Where(id => !builtInIdSet.Contains(id)).ToList();
+        Check(stale.Count == 0, "族成员表无失效 ID", stale.Count == 0 ? null : string.Join(",", stale));
+
+        // 全量一致性③：wing-/border- 前缀的装饰样式都已登记（防新增装饰忘了归族、静默平铺）
+        var unassigned = builtIn
+            .Where(s => (s.Id.StartsWith("wing-", StringComparison.Ordinal) || s.Id.StartsWith("border-", StringComparison.Ordinal))
+                        && StyleFamilies.GetFamilyKey(s) is null)
+            .Select(s => s.Id)
             .ToList();
-        Check(outside.Count == 0, "表外无 ≥阈值 的未收录首段",
-            outside.Count == 0 ? null : $"疑似漏收：{string.Join(",", outside)}");
+        Check(unassigned.Count == 0, "wing-/border- 样式均已归族", unassigned.Count == 0 ? null : string.Join(",", unassigned));
     }
 
     private static TextStyle Find(string id) =>

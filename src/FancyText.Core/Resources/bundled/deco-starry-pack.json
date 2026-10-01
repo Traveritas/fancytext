@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "星月夜",
   "author": "FancyText",
-  "description": "官方装饰扩充包：星月氛围前后缀（弦月框 / 星屑流 / 三连星 / 星点圈 / 描边重星）、星点字距、逐字度圈，共 10 个纯数据样式（wrapString / spacing / wrapEach），不引入新算法，不与内置样式重复（✧･ﾟ 闪耀边框、☾✦ 星月装饰等同款已内置）。码点取星月几何符号与日文半角片假名区，均在 Windows 10/11 自带字体覆盖范围内，不出豆腐块。",
+  "description": "官方装饰扩充包：星月氛围前后缀（弦月框 / 星屑流 / 三连星 / 星点圈 / 描边重星）、星点字距，共 9 个纯数据样式（wrapString / spacing），不引入新算法，不与内置样式重复（✧･ﾟ 闪耀边框、☾✦ 星月装饰、˚ 顶圈字等同款已内置）。码点取星月几何符号与日文半角片假名区，均在 Windows 10/11 自带字体覆盖范围内，不出豆腐块。",
   "styles": [
     {
       "id": "starry-moon-pair",
@@ -101,17 +101,6 @@
       "noteEn": "Grapheme separator (spacing): ⌒ U+2312 arc symbol chaining characters into a bridge",
       "steps": [
         { "op": "spacing", "separator": "⌒" }
-      ]
-    },
-    {
-      "id": "starry-each-degree",
-      "name": "头顶度圈 ˚",
-      "nameEn": "Degree Ring Per Char ˚",
-      "category": "decoration",
-      "note": "逐字后缀（wrapEach）：˚ U+02DA 上圈符号缀在每个字后，如头顶小月亮",
-      "noteEn": "Per-grapheme suffix (wrapEach): ˚ U+02DA ring appended after every character, like tiny moons overhead",
-      "steps": [
-        { "op": "wrapEach", "prefix": "", "suffix": "˚" }
       ]
     }
   ]

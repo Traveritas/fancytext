@@ -37,7 +37,7 @@ internal static class StyleEnglish
         ["bird-2"] = "Bird ❷",
         ["butterfly"] = "Butterfly",
         ["tail"] = "Tail",
-        ["smoke"] = "Smoke",
+        ["smoke"] = "Smoke ❶",
         ["smoke-thai"] = "Smoke ❷",
         ["sprout"] = "Sprout",
         ["heart-javanese"] = "Heart",

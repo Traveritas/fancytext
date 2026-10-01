@@ -230,13 +230,13 @@ public static partial class StyleCatalog
         });
         list.Add(new StyleDefinition
         {
-            Id = "smoke", Name = "冒烟文", Category = TextStyleCategory.CjkEffect,
+            Id = "smoke", Name = "冒烟文 ❶", Category = TextStyleCategory.CjkEffect,
             Steps = [new AppendMarkStep("\u0F82")],
             Note = "藏文声调（U+0F82），形似字顶冒烟",
         });
         list.Add(new StyleDefinition
         {
-            Id = "smoke-thai", Name = "烟雾文 ❷", Category = TextStyleCategory.CjkEffect,
+            Id = "smoke-thai", Name = "冒烟文 ❷", Category = TextStyleCategory.CjkEffect,
             Steps = [new AppendMarkStep("\u0E49", 4)],
             Note = "泰文声调标记 ้（U+0E49）× 4 堆叠",
         });

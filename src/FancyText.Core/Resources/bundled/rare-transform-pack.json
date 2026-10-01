@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "name": "生僻变换",
+  "author": "FancyText",
+  "description": "官方中文扩充包：三叠字变换（火→焱、水→淼、龙→龘、靐飍飝……38 组常用字→三叠生僻字，附还原方向）与大写数字（一→壹、万→萬，财务大写，附还原），共 4 个纯数据样式（mapReplace）。全部为内置没有的原子映射，不可由组合得到。",
+  "styles": [
+    {
+      "id": "rare-stack",
+      "name": "三叠字 焱",
+      "nameEn": "Triple Stacked 焱",
+      "category": "chinese",
+      "note": "内联映射表（mapReplace）：常用单字 → 三叠生僻字，共 38 组（火→焱 U+7131、水→淼 U+6DFC、龙→龘 U+9F98、雷→靐 U+9750、风→飍 U+98CD、飞→飝 U+98DD 等；表外字原样保留）",
+      "noteEn": "Inline map (mapReplace): common characters to triple-stacked rare ones, 38 entries (火→焱 U+7131, 水→淼 U+6DFC, 龙→龘 U+9F98 …); unmapped characters pass through",
+      "steps": [
+        {
+          "op": "mapReplace",
+          "map": {
+            "火": "焱", "水": "淼", "金": "鑫", "木": "森", "土": "垚",
+            "牛": "犇", "羊": "羴", "鱼": "鱻", "龙": "龘", "贝": "赑",
+            "直": "矗", "又": "叒", "毛": "毳", "力": "劦", "舌": "舙",
+            "耳": "聶", "口": "品", "目": "瞐", "手": "掱", "白": "皛",
+            "田": "畾", "雷": "靐", "风": "飍", "飞": "飝", "心": "惢",
+            "言": "譶", "车": "轟", "石": "磊", "犬": "猋", "鹿": "麤",
+            "马": "驫", "月": "朤", "日": "晶", "虫": "蟲", "子": "孨",
+            "女": "奻", "士": "壵", "小": "尛"
+          }
+        }
+      ]
+    },
+    {
+      "id": "rare-stack-reverse",
+      "name": "三叠字·还原",
+      "nameEn": "Triple Stacked · Restore",
+      "category": "chinese",
+      "note": "内联映射表（mapReplace）：三叠字 → 常用单字的反向表——看懂别人昵称里的 龘靐爩 们",
+      "noteEn": "Inline map (mapReplace): reverse table, triple-stacked back to common characters — decode the 龘靐 in other people's names",
+      "steps": [
+        {
+          "op": "mapReplace",
+          "map": {
+            "焱": "火", "淼": "水", "鑫": "金", "森": "木", "垚": "土",
+            "犇": "牛", "羴": "羊", "鱻": "鱼", "龘": "龙", "赑": "贝",
+            "矗": "直", "叒": "又", "毳": "毛", "劦": "力", "舙": "舌",
+            "聶": "耳", "品": "口", "瞐": "目", "掱": "手", "皛": "白",
+            "畾": "田", "靐": "雷", "飍": "风", "飝": "飞", "惢": "心",
+            "譶": "言", "轟": "车", "磊": "石", "猋": "犬", "麤": "鹿",
+            "驫": "马", "朤": "月", "晶": "日", "蟲": "虫", "孨": "子",
+            "奻": "女", "壵": "士", "尛": "小"
+          }
+        }
+      ]
+    },
+    {
+      "id": "rare-caps",
+      "name": "大写数字 壹",
+      "nameEn": "Financial Numerals 壹",
+      "category": "chinese",
+      "note": "内联映射表（mapReplace）：一→壹、二→贰……万→萬，财务大写（壹贰叁肆伍陆柒捌玖拾佰仟萬），防涂改写法",
+      "noteEn": "Inline map (mapReplace): 一→壹, 二→贰 … 万→萬 — the anti-tampering financial uppercase numerals",
+      "steps": [
+        {
+          "op": "mapReplace",
+          "map": {
+            "一": "壹", "二": "贰", "三": "叁", "四": "肆", "五": "伍",
+            "六": "陆", "七": "柒", "八": "捌", "九": "玖", "十": "拾",
+            "百": "佰", "千": "仟", "万": "萬"
+          }
+        }
+      ]
+    },
+    {
+      "id": "rare-caps-reverse",
+      "name": "大写数字·还原",
+      "nameEn": "Financial Numerals · Restore",
+      "category": "chinese",
+      "note": "内联映射表（mapReplace）：壹→一、萬→万 的反向表，把财务大写读回普通数字",
+      "noteEn": "Inline map (mapReplace): reverse table, financial uppercase back to plain numerals",
+      "steps": [
+        {
+          "op": "mapReplace",
+          "map": {
+            "壹": "一", "贰": "二", "叁": "三", "肆": "四", "伍": "五",
+            "陆": "六", "柒": "七", "捌": "八", "玖": "九", "拾": "十",
+            "佰": "百", "仟": "千", "萬": "万"
+          }
+        }
+      ]
+    }
+  ]
+}

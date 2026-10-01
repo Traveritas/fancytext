@@ -69,7 +69,7 @@ public static partial class StyleCatalog
         });
         list.Add(new StyleDefinition
         {
-            Id = "smoke-arabic", Name = "烟雾文 ❸", Category = TextStyleCategory.CjkEffect,
+            Id = "smoke-arabic", Name = "冒烟文 ❸", Category = TextStyleCategory.CjkEffect,
             Steps = [new AppendMarkStep("\u06E3", 7)],
             Note = "每字后附加阿拉伯文小型低形符 U+06E3 × 7 堆叠（调研报告 2.B4「冒烟文③」）",
         });
