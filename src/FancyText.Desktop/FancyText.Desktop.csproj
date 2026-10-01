@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <!-- WinForms 仅为托盘 NotifyIcon 与鼠标/屏幕定位（Cursor.Position / Screen.FromPoint），不渲染 WinForms 控件 -->
     <UseWindowsForms>true</UseWindowsForms>

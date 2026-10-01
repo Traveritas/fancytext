@@ -90,7 +90,7 @@ fancy bold -- --text        # -- 之后全部当文本
 - **渲染**：圆角/背景 Mica 走 Win11 DWM 系统特性（零额外缓冲），曾实测 `AllowsTransparency + DropShadowEffect` 位图特效会把工作集从 ~145MB 推到 ~190MB，已弃用；动效只动 Opacity/RenderTransform，跟随系统动画总开关；
 - **实测水位**（Win11 26100，供回归对照）：首次唤出瞬时 ~220MB（字体/词典/动画预热），稳态唤出 ~100MB；隐藏 1.5s 后修剪工作集，任务管理器观感 ~7–10MB（私有内存仍约 100MB，修剪的是工作集）。开机自启后从未唤出过时尚未修剪。命令行工具单文件 270KB。
 
-引擎基准（`dotnet run --project tests/FancyText.Core.Tests -- bench`）：全目录 × 64 字输入，约 0.2ms/次。
+引擎基准（`dotnet run --project tests/FancyText.Core.Tests -- bench`）：全目录（内置 + 已装官方包，约 230 个样式）× 64 字输入，约 1–2ms/次。
 
 ## 项目结构
 
@@ -126,7 +126,7 @@ docs/                      样式包规范、示例包、UI 设计稿、品牌�
 
 ## 构建与测试
 
-要求：.NET SDK 10（构建 net8.0 目标）；运行测试需要 .NET 8 运行时；Windows 10 19041+（建议 Win11）。
+要求：.NET SDK 10（`global.json` 锁定 10.0.x，目标框架 net10.0）；Windows 10 19041+（建议 Win11）。桌面版自包含发布，用户无需安装 .NET；CLI 为框架依赖发布，需要 .NET 10 运行时。
 
 ```bash
 # 引擎测试（336 项断言，含样式包全链路与简繁词级消歧；失败退出码 1）

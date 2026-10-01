@@ -6,14 +6,14 @@
 
 | 分发物 | 包含的第三方内容 |
 | --- | --- |
-| `FancyText.Desktop-x.y.z-win-x64.zip`（桌面版，自包含单文件） | .NET 8 运行时（MIT）；内嵌词典数据四种（见第二节） |
+| `FancyText.Desktop-x.y.z-win-x64.zip`（桌面版，自包含单文件） | .NET 10 运行时（MIT）；内嵌词典数据四种（见第二节） |
 | `fancy`（CLI，框架依赖发布） | 无（使用本机已安装的 .NET） |
 
 ## 一、运行时与库
 
 | 组件 | 版本 | 许可 | 版权人 | 来源 |
 | --- | --- | --- | --- | --- |
-| .NET 运行时 / Windows Desktop 运行时 | 8.0.x（补丁版本随打包时的 SDK） | MIT | .NET Foundation and Contributors | <https://github.com/dotnet/runtime> |
+| .NET 运行时 / Windows Desktop 运行时 | 10.0.x（补丁版本随打包时的 SDK） | MIT | .NET Foundation and Contributors | <https://github.com/dotnet/runtime> |
 
 ## 二、内嵌词典数据
 
