@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace FancyText.Core;
 
 /// <summary>
-/// 收藏与最近使用状态，持久化到 %LOCALAPPDATA%\FancyText\state.json（CmdPal 插件与桌面版共享）。
+/// 收藏与最近使用状态，持久化到 %LOCALAPPDATA%\FancyText\state.json（桌面版与 CLI 共享）。
 /// 状态变化广播 <see cref="Changed"/>，宿主 UI 据此刷新。
 /// </summary>
 public sealed class UsageState
@@ -33,7 +33,7 @@ public sealed class UsageState
 
     public event Action? Changed;
 
-    /// <summary>界面语言偏好（"zh"/"en"/"auto"=跟随系统，null=默认中文）。CmdPal 插件与桌面版共享。</summary>
+    /// <summary>界面语言偏好（"zh"/"en"/"auto"=跟随系统，null=默认中文）。桌面版与 CLI 共享。</summary>
     public string? Language
     {
         get

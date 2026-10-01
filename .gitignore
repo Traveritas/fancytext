@@ -4,8 +4,5 @@ obj/
 *.suo
 .vs/
 *.pfx
-*.appx
-*.appxbundle
-AppPackages/
 reference/
 dist/

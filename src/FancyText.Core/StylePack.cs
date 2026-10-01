@@ -41,7 +41,7 @@ public sealed record InstalledPack(string PackName, string FilePath, IReadOnlyLi
 public sealed record BundledPack(string PackName, string FileName, IReadOnlyList<TextStyle> Styles, string Json);
 
 /// <summary>
-/// 样式包的导入 / 安装扫描 / 卸载。三端（插件 / 桌面 / CLI）共用，
+/// 样式包的导入 / 安装扫描 / 卸载。桌面版与 CLI 共用，
 /// 目录为 <see cref="DefaultPacksDirectory"/>，一文件一包，放文件即生效（进程下次加载）。
 /// </summary>
 public static class StylePacks

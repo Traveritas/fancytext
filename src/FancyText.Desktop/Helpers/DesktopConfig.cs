@@ -14,7 +14,7 @@ internal readonly record struct HotkeyBinding(uint Modifiers, Key Key, string Di
 }
 
 /// <summary>
-/// 桌面版全部设置，存 %LOCALAPPDATA%\FancyText\desktop.json（与插件状态 state.json 同目录、不同文件）。
+/// 桌面版全部设置，存 %LOCALAPPDATA%\FancyText\desktop.json（与收藏状态 state.json 同目录、不同文件）。
 /// 设计为不可变 record：改任何一项都整体重存；所有项即时生效。
 /// 文件缺失/格式非法一律回退默认，不弹错——读取必须宽容（含旧版 {"hotkey":"..."} 单键文件）。
 /// </summary>

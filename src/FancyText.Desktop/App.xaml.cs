@@ -62,7 +62,7 @@ public partial class App : Application, IDisposable
             return;
         }
 
-        // 与 CmdPal 插件共享 %LOCALAPPDATA%\FancyText\state.json（收藏/最近）
+        // 与 CLI 共享 %LOCALAPPDATA%\FancyText\state.json（收藏/最近/语言/停用包）
         var usage = new UsageState();
         _mainWindow = new MainWindow(usage);
 

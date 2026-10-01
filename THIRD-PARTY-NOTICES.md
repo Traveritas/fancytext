@@ -7,7 +7,6 @@
 | 分发物 | 包含的第三方内容 |
 | --- | --- |
 | `FancyText.Desktop-x.y.z-win-x64.zip`（桌面版，自包含单文件） | .NET 8 运行时（MIT）；内嵌词典数据四种（见第二节） |
-| `FancyText.CmdPal`（Command Palette 插件，MSIX） | Windows App SDK 运行时；下表中的 SDK 引用；同样内嵌词典数据 |
 | `fancy`（CLI，框架依赖发布） | 无（使用本机已安装的 .NET） |
 
 ## 一、运行时与库
@@ -15,12 +14,6 @@
 | 组件 | 版本 | 许可 | 版权人 | 来源 |
 | --- | --- | --- | --- | --- |
 | .NET 运行时 / Windows Desktop 运行时 | 8.0.x（补丁版本随打包时的 SDK） | MIT | .NET Foundation and Contributors | <https://github.com/dotnet/runtime> |
-| Microsoft.CommandPalette.Extensions | 0.6.251022008 | MIT | Microsoft Corporation | <https://github.com/microsoft/PowerToys> |
-| Microsoft.Windows.CsWinRT | 2.2.0 | MIT | Microsoft Corporation | <https://github.com/microsoft/CsWinRT> |
-| Shmuelie.WinRTServer | 2.1.1 | MIT | Shmueli Englard | <https://github.com/shmuelie/Shmuelie.WinRTServer> |
-| Microsoft.WindowsAppSDK | 1.7.250401001 | 微软软件许可条款（专有，允许随应用再分发） | Microsoft Corporation | <https://learn.microsoft.com/windows/apps/windows-app-sdk/> |
-
-**关于 Windows App SDK**：它不以开源许可发布，但允许作为应用的一部分再分发（Microsoft Software License Terms 第 3 节）。本项目未修改其任何二进制，也未将其置于任何要求公开源码的许可之下。该 NuGet 包自带 `NOTICE.txt`，其中列出随附的开源组件（如 Newtonsoft.Json，MIT）；插件 MSIX 对外分发时应一并提供该文件，路径为 `microsoft.windowsappsdk/<版本>/NOTICE.txt`。桌面版与 CLI 不含 Windows App SDK。
 
 ## 二、内嵌词典数据
 
@@ -37,14 +30,12 @@
 
 ## 三、许可全文
 
-### MIT（适用于第一节的 .NET 运行时、Command Palette SDK、CsWinRT、WinRTServer 与第二节的 cnchar、拼音数据）
+### MIT（适用于第一节的 .NET 运行时与第二节的 cnchar、拼音数据）
 
 ```text
 MIT License
 
 Copyright (c) .NET Foundation and Contributors
-Copyright (c) Microsoft Corporation
-Copyright (c) 2022 Shmueli Englard
 Copyright (c) theajack
 Copyright (c) mozillazg
 

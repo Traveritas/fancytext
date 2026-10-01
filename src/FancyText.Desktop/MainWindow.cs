@@ -21,7 +21,7 @@ namespace FancyText.Desktop;
 
 /// <summary>
 /// 弹窗式转换主窗口：常驻隐藏，热键/托盘/二次启动唤出，失焦自动隐藏（此类唤出式工具的标准行为）。
-/// 性能约定与 CmdPal 插件一致：预览只转换前 64 个字素（输入防抖 150ms 后整体重建列表），
+/// 性能约定：预览只转换前 64 个字素（输入防抖 150ms 后整体重建列表），
 /// 回车复制时才对全文做完整转换。
 /// </summary>
 internal sealed class MainWindow : Window

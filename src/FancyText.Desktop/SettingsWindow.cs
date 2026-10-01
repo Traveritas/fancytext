@@ -789,7 +789,7 @@ internal sealed class SettingsWindow : Window
     /// 样式包管理面板：顶部导入（.json 包文件 → %LOCALAPPDATA%\FancyText\styles）/导出收藏按钮 + 状态行，
     /// 下方两组——「官方样式包」（exe 内嵌，一键安装/启停/卸载）与「已安装样式包」（用户导入，启停/卸载，
     /// 损坏标红只能卸载）。每行可展开，用主窗当前输入逐样式做单行转换预览。
-    /// 任何动作后即时刷新主窗口列表；命令面板插件需重启其进程后生效。
+    /// 任何动作后即时刷新主窗口列表。
     /// </summary>
     private StackPanel MakeStylePacksPanel()
     {

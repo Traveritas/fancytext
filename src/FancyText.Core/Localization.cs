@@ -30,7 +30,7 @@ public static class Localization
 }
 
 /// <summary>
-/// UI 文案二选一助手，供代码构建 UI 的项目（桌面版 / CmdPal）共用：
+/// UI 文案二选一助手，供代码构建 UI 的项目（桌面版 / CLI）共用：
 /// 构建控件时求值，语言切换后由各自的 UI 重建链路重新求值。
 /// </summary>
 public static class Loc

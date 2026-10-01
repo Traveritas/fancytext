@@ -3,7 +3,6 @@
     <Project Path="src/FancyText.Cli/FancyText.Cli.csproj">
       <Platform Project="x64" />
     </Project>
-    <Project Path="src/FancyText.CmdPal/FancyText.CmdPal.csproj" />
     <Project Path="src/FancyText.Core/FancyText.Core.csproj" />
     <Project Path="src/FancyText.Desktop/FancyText.Desktop.csproj">
       <Platform Project="x64" />

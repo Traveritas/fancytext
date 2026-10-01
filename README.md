@@ -118,7 +118,6 @@ src/FancyText.Core/        转换引擎（无 UI 依赖）
   Resources/               火星文字典（cnchar, MIT）、OpenCC 简繁词典（Apache-2.0）、拼音数据（MIT）、bundled/ 官方包
 src/FancyText.Desktop/     桌面版（WPF：全局热键 + 托盘 + 弹窗转换器）
 src/FancyText.Cli/         命令行工具 fancy
-src/FancyText.CmdPal/      PowerToys Command Palette 插件（已停止维护，见下）
 src/FancyText.FontProbe/   字体覆盖探测小工具（开发用，不在解决方案内）
 tests/FancyText.Core.Tests/  引擎自检测试 + demo / bench / audit 子命令
 tools/                     打包、图标生成与各类 UI 验证脚本
@@ -145,9 +144,9 @@ tools/package.ps1
 
 版本号统一在 `Directory.Build.props`。
 
-## Command Palette 插件（已停止维护）
+## 关于 Command Palette 插件
 
-`src/FancyText.CmdPal` 是早期的 PowerToys Command Palette 插件形态，**已停止维护、不再分发**：SDK 的列表页模型承载不了桌面版的交互与渲染，宿主进程常驻 ~200MB+ 也不在本项目可控范围。代码暂留仓库供参考，不保证能与当前引擎一起正常工作；仓库不再附带签名证书，如需自行构建 MSIX，请用自己的证书签名。
+项目最早是 PowerToys Command Palette 插件，后来桌面版成为唯一产品形态，插件已停止维护并从仓库移除（代码保留在 git 历史中）：SDK 的列表页模型承载不了桌面版的交互与渲染，宿主进程常驻 ~200MB+ 也不在本项目可控范围。
 
 ## 已知限制
 

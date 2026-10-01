@@ -575,7 +575,7 @@ public static partial class StyleCatalog
         {
             Id = "strip-marks", Name = "还原（去装饰）", Category = TextStyleCategory.Transform,
             Steps = [new AlgorithmStep(KnownAlgorithm.StripCombiningMarks)],
-            Note = "去掉本插件生成的全部组合附加符号，还原原文",
+            Note = "去掉本工具生成的全部组合附加符号，还原原文",
         });
 
         // ================= 中文 =================

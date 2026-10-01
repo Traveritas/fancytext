@@ -5,7 +5,7 @@ using FancyText.Core;
 namespace FancyText.Cli;
 
 /// <summary>
-/// 花式文字独立命令行工具（引擎与 CmdPal 插件共用 FancyText.Core）。
+/// 花式文字命令行工具（与桌面版共用 FancyText.Core）。
 /// 用法：
 ///   fancy                     对示例文本列出全部样式
 ///   fancy <文本>              对该文本列出全部样式
@@ -40,7 +40,7 @@ public static class Program
         fancy -- <文本>                  -- 之后全部当文本
         """;
 
-    /// <summary>界面语言：跟随共享 state.json 的语言偏好（桌面版/插件切换后 CLI 同步），无则系统文化。</summary>
+    /// <summary>界面语言：跟随共享 state.json 的语言偏好（桌面版切换后 CLI 同步），无则系统文化。</summary>
     private static AppLanguage Lang { get; } = Localization.Resolve(new UsageState().Language);
 
     public static int Main(string[] args)
