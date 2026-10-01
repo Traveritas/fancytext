@@ -814,6 +814,20 @@ internal sealed class SettingsWindow : Window
         StyleButton(fetchBtn);
         fetchBtn.Click += (_, _) => OnFetchOnlinePacks();
 
+        // 目录无监听：手动放进 styles\ 或改过已装包文件后，点这里重扫，免重启
+        var reloadBtn = new Button
+        {
+            Content = Loc.S(_lang, "重新加载", "Reload"),
+            FontSize = 12,
+            Padding = new Thickness(10, 3, 10, 3),
+            Margin = new Thickness(8, 0, 0, 0),
+            Cursor = Cursors.Hand,
+            ToolTip = Loc.S(_lang, "重新扫描样式包目录（手动放入或修改包文件后使用）",
+                "Rescan the packs folder (after adding or editing pack files by hand)"),
+        };
+        StyleButton(reloadBtn);
+        reloadBtn.Click += (_, _) => ApplyPacksChanged(Loc.S(_lang, "已重新加载 ✓", "Reloaded ✓"));
+
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
 
         _packStatus = new TextBlock
@@ -852,6 +866,7 @@ internal sealed class SettingsWindow : Window
         var panel = new StackPanel();
         buttons.Children.Add(importBtn);
         buttons.Children.Add(fetchBtn);
+        buttons.Children.Add(reloadBtn);
         panel.Children.Add(buttons);
         panel.Children.Add(_packStatus);
         panel.Children.Add(_packsList);
@@ -1065,8 +1080,8 @@ internal sealed class SettingsWindow : Window
             _packsList.Children.Add(new TextBlock
             {
                 Text = Loc.S(_lang,
-                    $"尚无导入的样式包——把别人分享的 .json 放进 {FancyText.Core.StylePacks.DefaultPacksDirectory} 也行",
-                    $"No imported packs yet — dropping a shared .json into {FancyText.Core.StylePacks.DefaultPacksDirectory} also works"),
+                    $"尚无导入的样式包——也可以把别人分享的 .json 放进 {FancyText.Core.StylePacks.DefaultPacksDirectory}，再点「重新加载」",
+                    $"No imported packs yet — you can also drop a shared .json into {FancyText.Core.StylePacks.DefaultPacksDirectory} and click Reload"),
                 FontSize = 10.5,
                 Foreground = _theme.Meta,
                 Opacity = 0.8,
