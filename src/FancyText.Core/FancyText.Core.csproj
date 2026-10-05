@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="FancyText.Core.Tests" />
+    <InternalsVisibleTo Include="FancyText.Desktop.Tests" />
   </ItemGroup>
 
   <ItemGroup>

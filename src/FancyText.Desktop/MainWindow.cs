@@ -70,6 +70,7 @@ internal sealed class MainWindow : Window
     private TextBox _inputBox = new();
     private ListBox _listBox = new();
     private TextBlock _statusCount = new();
+    private TextBlock _outputFeedback = new();
     private TextBlock _emptyHint = new();
     private ToggleButton _filterChip = new();
     private TextBlock _filterChipLabel = new();
@@ -105,6 +106,9 @@ internal sealed class MainWindow : Window
     private bool _micaActive;          // Mica 材质生效中（窗口底透明，透出 DWM 系统材质）
     private bool _hiding;              // 退出动画播放中（播完才真正 Hide；期间唤出则取消）
     private bool _showingPopup;        // 唤出流程执行中（预填等待会泵消息，排队的第二次热键不得重入）
+    private FocusedTextTarget? _outputTarget;
+    private bool _committingOutput;
+    private bool _restoringOutputFocus;
 
     public MainWindow(UsageState usage)
     {
@@ -536,7 +540,7 @@ internal sealed class MainWindow : Window
         var hintPairs = new[]
         {
             ("↑↓", Loc.S(lang, "浏览", "Browse")),
-            ("Enter", Loc.S(lang, "复制", "Copy")),
+            ("Enter", _settings.InsertOnCommit ? Loc.S(lang, "选定", "Apply") : Loc.S(lang, "复制", "Copy")),
             ("Ctrl+D", Loc.S(lang, "收藏", "Pin")),
             ("Ctrl+R", Loc.S(lang, "随机", "Random")),
             ("Esc", Loc.S(lang, "收起", "Hide")),
@@ -574,6 +578,15 @@ internal sealed class MainWindow : Window
         var statusHost = new DockPanel();
         DockPanel.SetDock(statusSeparator, Dock.Top);
         statusHost.Children.Add(statusSeparator);
+        _outputFeedback = new TextBlock
+        {
+            FontSize = 12, Foreground = _theme.Text, TextWrapping = TextWrapping.Wrap,
+            Visibility = Visibility.Collapsed, Margin = new Thickness(0, 0, 0, 10),
+        };
+        System.Windows.Automation.AutomationProperties.SetAutomationId(_outputFeedback, "OutputFeedback");
+        System.Windows.Automation.AutomationProperties.SetLiveSetting(_outputFeedback, System.Windows.Automation.AutomationLiveSetting.Polite);
+        DockPanel.SetDock(_outputFeedback, Dock.Top);
+        statusHost.Children.Add(_outputFeedback);
         DockPanel.SetDock(hints, Dock.Right);
         statusHost.Children.Add(hints);
         statusHost.Children.Add(_statusCount); // 最后一个子元素填充余下空间
@@ -1100,7 +1113,7 @@ internal sealed class MainWindow : Window
     /// <summary>唤出弹窗：按设置预填 → 重建列表 → 定位（鼠标附近/主屏）。热键/托盘/二次启动共用入口。</summary>
     public void ShowPopup()
     {
-        if (_closed || _showingPopup)
+        if (_closed || _showingPopup || _committingOutput)
         {
             return; // 退出中；或本次唤出还在预填（兼容模式等待会泵消息，排队的第二次热键直接吞掉）
         }
@@ -1129,6 +1142,8 @@ internal sealed class MainWindow : Window
         }
 
         var seq = ++_showSeq; // 唤出序号：异步预填结果只作用于最新一次唤出
+        _outputFeedback.Visibility = Visibility.Collapsed;
+        _outputTarget = _settings.InsertOnCommit ? FocusedTextTarget.Capture() : null;
         string? prefill = null;
         if (_settings.PrefillSelection && _settings.PrefillSelectionPlus)
         {
@@ -1178,7 +1193,7 @@ internal sealed class MainWindow : Window
                     return;
                 }
 
-                if (_closed || seq != _showSeq || !IsVisible || _inputBox.Text != seededInput)
+                if (_closed || seq != _showSeq || !IsVisible || _committingOutput || _inputBox.Text != seededInput)
                 {
                     return;
                 }
@@ -1362,7 +1377,7 @@ internal sealed class MainWindow : Window
         LogDiag("window: deactivated");
         // 失焦即藏。仅在被激活过之后才生效：Windows 前台锁定时 Show 可能拿不到激活，
         // 若一显示就 Deactivated 会把弹窗"闪没"。
-        if (_activatedSinceShown)
+        if (_activatedSinceShown && !_restoringOutputFocus)
         {
             HideAndScheduleTrim();
         }
@@ -1877,6 +1892,10 @@ internal sealed class MainWindow : Window
     /// </summary>
     private bool ActivateSelected()
     {
+        if (_committingOutput)
+        {
+            return true; // 等待松键/恢复焦点期间，连按或双击只提交一次
+        }
         switch (_listBox.SelectedItem)
         {
             case StyleListItem { Kind: StyleListItem.KindFamily, FamilyKey: { } family }:
@@ -1893,7 +1912,7 @@ internal sealed class MainWindow : Window
         }
     }
 
-    /// <summary>回车/双击：对全文做完整转换写入剪贴板 → 记录最近使用 → 隐藏。</summary>
+    /// <summary>回车/双击：完整转换一次，按设置分别执行复制和直接输入。</summary>
     private bool CommitSelected()
     {
         if (_listBox.SelectedItem is not StyleListItem selected || !_stylesById.TryGetValue(selected.StyleId, out var style))
@@ -1911,31 +1930,132 @@ internal sealed class MainWindow : Window
         catch (Exception ex)
         {
             LogDiag($"commit: transform failed {ex.GetType().Name}");
-            return false; // 单样式失败静默放弃，不打断使用
+            ShowOutputFeedback(Loc.S(Lang, "此样式转换失败，请选择其他样式", "Conversion failed; choose another style"));
+            return true;
         }
 
-        if (string.IsNullOrEmpty(result) || !TryCopyToClipboard(result))
+        if (string.IsNullOrEmpty(result))
         {
-            LogDiag($"commit: copy failed (resultLen={result.Length})");
-            _statusCount.Text = Loc.S(Lang, "剪贴板写入失败，可再按 Enter 重试", "Clipboard write failed; press Enter to retry");
-            return false; // 复制失败保持窗口打开，便于重试
+            ShowOutputFeedback(Loc.S(Lang, "转换结果为空，请修改文字或样式", "The result is empty; change the text or style"));
+            return true;
         }
 
-        LogDiag("commit: copied -> hide");
-        _usage.RecordUse(selected.StyleId);
-
-        _copyTimer.Stop();
-        _statusCount.Text = _settings.HideAfterCopy
-            ? Loc.S(Lang, "已复制 ✓", "Copied ✓")
-            : Loc.S(Lang, "已复制 ✓ 可继续换样式（Enter 重复制）", "Copied ✓ pick another style (Enter to copy again)");
-        _copyTimer.Start(); // 1.2s 后恢复计数文本（若随即隐藏，HideAndScheduleTrim 会停掉它）
-        if (_settings.HideAfterCopy)
-        {
-            HideAndScheduleTrim(); // 退出动画统一在隐藏路径播放（淡出+上移，与进入同款）
-        }
-
+        _ = CommitOutputAsync(result, selected.StyleId);
         return true;
     }
+
+    private async Task CommitOutputAsync(string result, string styleId)
+    {
+        _committingOutput = true;
+        var settings = _settings;
+        var target = _outputTarget;
+        var copied = false;
+        var inserted = false;
+        var outcome = InsertOutcome.Unavailable;
+        _copyTimer.Stop();
+        _outputFeedback.Visibility = Visibility.Collapsed;
+        try
+        {
+            copied = settings.CopyOnCommit && TryCopyToClipboard(result);
+            if (settings.InsertOnCommit && target is not null)
+            {
+                // 保留焦点直到 Enter、双击和修饰键全部松开，防止原应用收到尾随的按键。
+                var wait = Stopwatch.StartNew();
+                while (FocusedTextTarget.ActivationKeysHeld() && wait.ElapsedMilliseconds < 1500 && IsActive && !_closed && !_hiding)
+                {
+                    await Task.Delay(15);
+                }
+
+                if (_closed || !IsActive || _hiding)
+                {
+                    outcome = InsertOutcome.FocusChanged;
+                }
+                else if (FocusedTextTarget.ActivationKeysHeld())
+                {
+                    outcome = InsertOutcome.KeysHeld;
+                }
+                else if (FocusedTextTarget.GetTextIssue(result) is { } issue)
+                {
+                    outcome = issue;
+                }
+                else
+                {
+                    _restoringOutputFocus = true;
+                    try
+                    {
+                        if (target.TryActivate())
+                        {
+                            // 恢复输入目标时立即隐藏，不能让退出动画延迟焦点交接。
+                            _hiding = true;
+                            FinishHide();
+                        }
+                    }
+                    finally { _restoringOutputFocus = false; }
+                    outcome = target.IsForeground ? await target.InsertAsync(result) : InsertOutcome.FocusChanged;
+                    inserted = outcome == InsertOutcome.Inserted;
+                }
+            }
+
+            if (copied || inserted)
+            {
+                _usage.RecordUse(styleId);
+            }
+            if (_closed)
+            {
+                return;
+            }
+            var failed = (settings.CopyOnCommit && !copied) || (settings.InsertOnCommit && !inserted);
+            if (failed)
+            {
+                // 用户已经切走时不抢焦点；目标仍在前台则恢复结果窗口，便于复制或修改。
+                if (!IsVisible && target?.IsForeground == true)
+                {
+                    _trimTimer.Stop();
+                    Show();
+                    SafeActivate();
+                    FocusInput();
+                }
+                var messages = new List<string>();
+                if (copied) messages.Add(Loc.S(Lang, "已复制。", "Copied. "));
+                if (inserted) messages.Add(Loc.S(Lang, "已输入；再次选定会重复输入。", "Inserted; applying again will insert again. "));
+                if (settings.CopyOnCommit && !copied) messages.Add(Loc.S(Lang, "剪贴板写入失败。", "Clipboard write failed. "));
+                if (settings.InsertOnCommit && !inserted) messages.Add(InsertFailureMessage(outcome));
+                ShowOutputFeedback(string.Concat(messages));
+                LogDiag($"commit: copied={copied} insert={outcome}");
+                return;
+            }
+
+            _statusCount.Text = inserted ? Loc.S(Lang, "已输入 ✓", "Inserted ✓") : Loc.S(Lang, "已复制 ✓", "Copied ✓");
+            if (IsVisible)
+            {
+                _copyTimer.Start();
+                if (settings.HideAfterCopy) HideAndScheduleTrim();
+            }
+        }
+        catch (Exception ex)
+        {
+            LogDiag($"commit: output failed {ex.GetType().Name}");
+            ShowOutputFeedback(Loc.S(Lang, "输出未完成，请检查目标文本框后再操作", "Output did not complete; check the target field before trying again"));
+        }
+        finally { _committingOutput = false; }
+    }
+
+    private void ShowOutputFeedback(string message)
+    {
+        _copyTimer.Stop();
+        _outputFeedback.Text = message;
+        _outputFeedback.Visibility = Visibility.Visible;
+    }
+
+    private string InsertFailureMessage(InsertOutcome outcome) => outcome switch
+    {
+        InsertOutcome.KeysHeld => Loc.S(Lang, "请松开 Enter、鼠标和修饰键后重试。", "Release Enter, the mouse and modifier keys, then retry."),
+        InsertOutcome.TooLong => Loc.S(Lang, "结果过长，无法直接输入，请使用剪贴板复制。", "The result is too long to insert; use clipboard copying."),
+        InsertOutcome.UnsupportedText => Loc.S(Lang, "含换行或制表符等控制字符，请使用复制；尚未输入。", "The result contains line breaks, tabs or other control characters; use copying. Nothing was inserted."),
+        InsertOutcome.Blocked => Loc.S(Lang, "目标应用阻止了输入，请使用剪贴板复制。", "The target app blocked input; use clipboard copying."),
+        InsertOutcome.Partial => Loc.S(Lang, "可能只输入了部分文字，请检查原文本框，避免重复输入。", "Some text may have been inserted; check the original field to avoid duplicates."),
+        _ => Loc.S(Lang, "未找到可用的原文本框；请聚焦可编辑文本框后重新唤出。", "The original field is unavailable; focus an editable text field and reopen Fancy Text."),
+    };
 
     /// <summary>写入剪贴板：剪贴板可能被其它进程短暂占用，重试 3 次、间隔 100ms。
     /// 走原生 Win32（Win32Clipboard）而非 WPF Clipboard.SetText+Flush——后者的 OLE 通路会周期性卡死：

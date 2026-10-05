@@ -17,3 +17,5 @@ jobs:
         run: dotnet build FancyText.slnx -c Release
       - name: Engine tests
         run: dotnet run --project tests/FancyText.Core.Tests -c Release --no-build
+      - name: Desktop settings tests
+        run: dotnet run --project tests/FancyText.Desktop.Tests -c Release -p:Platform=x64 --no-build

@@ -152,6 +152,7 @@ internal sealed class SettingsWindow : Window
         root.Children.Add(plusRow);
         root.Children.Add(MakeRow(Loc.S(lang, "唤出时预填剪贴板文字", "Prefill from clipboard"),
             MakeToggle(nameof(_settings.PrefillClipboard), _settings.PrefillClipboard, v => Save(_settings with { PrefillClipboard = v }))));
+        root.Children.Add(MakeCommitOptions());
         root.Children.Add(MakeRow(Loc.S(lang, "复制后收起窗口", "Hide after copying"),
             MakeToggle(nameof(_settings.HideAfterCopy), _settings.HideAfterCopy, v => Save(_settings with { HideAfterCopy = v }))));
         root.Children.Add(MakeRow(Loc.S(lang, "弹窗位置", "Popup position"), MakePositionCombo()));
@@ -415,6 +416,106 @@ internal sealed class SettingsWindow : Window
             PreviewSize = combo.SelectedIndex == 0 ? "small" : combo.SelectedIndex == 2 ? "large" : "medium",
         });
         return combo;
+    }
+
+    private StackPanel MakeCommitOptions()
+    {
+        var panel = new StackPanel { Margin = new Thickness(0, 2, 0, 14) };
+        panel.Children.Add(new TextBlock
+        {
+            Text = Loc.S(_lang, "选定样式时（Enter / 双击）", "When selecting a style (Enter / double-click)"),
+            FontSize = 12.5,
+            Foreground = _theme.Text,
+            Margin = new Thickness(0, 0, 0, 6),
+        });
+        CheckBox Option(string id, string label, bool value)
+        {
+            var box = new CheckBox
+            {
+                Content = label, IsChecked = value, FontSize = 12.5,
+                Foreground = _theme.Text, Background = _theme.KeycapBackground,
+                MinHeight = 28, VerticalContentAlignment = VerticalAlignment.Center,
+                Style = CreateCommitCheckBoxStyle(),
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(box, id);
+            ToolTipService.SetShowOnDisabled(box, true);
+            panel.Children.Add(box);
+            return box;
+        }
+        var copy = Option(nameof(_settings.CopyOnCommit), Loc.S(_lang, "复制到剪贴板", "Copy to clipboard"), _settings.CopyOnCommit);
+        var insert = Option(nameof(_settings.InsertOnCommit), Loc.S(_lang, "输入到原文本框", "Insert into the original text field"), _settings.InsertOnCommit);
+        void UpdateOptions()
+        {
+            copy.IsEnabled = insert.IsChecked == true;
+            insert.IsEnabled = copy.IsChecked == true;
+            var hint = Loc.S(_lang, "至少保留一项；可先勾选另一项", "Keep at least one option; select the other option first");
+            copy.ToolTip = copy.IsEnabled ? null : hint;
+            insert.ToolTip = insert.IsEnabled ? null : hint;
+        }
+        copy.Click += (_, _) => { Save(_settings with { CopyOnCommit = copy.IsChecked == true }); UpdateOptions(); };
+        insert.Click += (_, _) => { Save(_settings with { InsertOnCommit = insert.IsChecked == true }); UpdateOptions(); };
+        UpdateOptions();
+        panel.Children.Add(new TextBlock
+        {
+            Text = Loc.S(_lang,
+                "可同时勾选，至少保留一项。直接输入会收起窗口，并替换原文本框中的选中文字；没有可用文本框时会提示。",
+                "Select one or both. Inserting hides this window and replaces any selected text in the original field. If no field is available, a message appears."),
+            TextWrapping = TextWrapping.Wrap, FontSize = 11.5, Foreground = _theme.Meta,
+            Margin = new Thickness(0, 4, 0, 0),
+        });
+        return panel;
+    }
+
+    private Style CreateCommitCheckBoxStyle()
+    {
+        var mark = new FrameworkElementFactory(typeof(System.Windows.Shapes.Path));
+        mark.Name = "Mark";
+        mark.SetValue(System.Windows.Shapes.Path.DataProperty, Geometry.Parse("M 3,8 L 6.5,11.5 L 13,4.5"));
+        mark.SetValue(System.Windows.Shapes.Path.StrokeProperty, Brushes.White);
+        mark.SetValue(System.Windows.Shapes.Path.StrokeThicknessProperty, 2d);
+        mark.SetValue(UIElement.VisibilityProperty, Visibility.Hidden);
+        var box = new FrameworkElementFactory(typeof(Border));
+        box.Name = "Box";
+        box.SetValue(FrameworkElement.WidthProperty, 18d);
+        box.SetValue(FrameworkElement.HeightProperty, 18d);
+        box.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        box.SetValue(DockPanel.DockProperty, Dock.Left);
+        box.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
+        box.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        box.SetValue(Border.BorderBrushProperty, _theme.Meta);
+        box.AppendChild(mark);
+        var content = new FrameworkElementFactory(typeof(ContentPresenter));
+        content.SetValue(FrameworkElement.MarginProperty, new Thickness(8, 0, 0, 0));
+        content.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        var row = new FrameworkElementFactory(typeof(DockPanel));
+        row.AppendChild(box);
+        row.AppendChild(content);
+        var focus = new FrameworkElementFactory(typeof(Border));
+        focus.Name = "Focus";
+        focus.SetValue(Border.PaddingProperty, new Thickness(2));
+        focus.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        focus.SetValue(Border.BorderBrushProperty, Brushes.Transparent);
+        focus.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+        focus.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
+        focus.AppendChild(row);
+        var template = new ControlTemplate(typeof(CheckBox)) { VisualTree = focus };
+        var check = new Trigger { Property = ToggleButton.IsCheckedProperty, Value = true };
+        check.Setters.Add(new Setter(Border.BackgroundProperty, _theme.Primary, "Box"));
+        check.Setters.Add(new Setter(Border.BorderBrushProperty, _theme.Primary, "Box"));
+        check.Setters.Add(new Setter(UIElement.VisibilityProperty, Visibility.Visible, "Mark"));
+        template.Triggers.Add(check);
+        var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hover.Setters.Add(new Setter(Border.BorderBrushProperty, _theme.Text, "Box"));
+        template.Triggers.Add(hover);
+        var keyboard = new Trigger { Property = UIElement.IsKeyboardFocusedProperty, Value = true };
+        keyboard.Setters.Add(new Setter(Border.BorderBrushProperty, _theme.Primary, "Focus"));
+        template.Triggers.Add(keyboard);
+        var disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+        disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.5, "Box"));
+        template.Triggers.Add(disabled);
+        var style = new Style(typeof(CheckBox));
+        style.Setters.Add(new Setter(Control.TemplateProperty, template));
+        return style;
     }
 
     private ComboBox MakePositionCombo()

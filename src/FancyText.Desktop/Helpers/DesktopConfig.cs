@@ -29,6 +29,8 @@ internal sealed record DesktopSettings
     public bool PrefillSelection { get; init; } = true; // 唤出时优先预填其它应用中选中的文字（UIA 只读，失败回退剪贴板）
     public bool PrefillSelectionPlus { get; init; }     // 预填兼容模式：UIA 失败时模拟 Ctrl+Insert 复制兜底（立即还原剪贴板）
     public bool HideAfterCopy { get; init; } = true;    // 复制后收起弹窗（关=留在原地，状态栏提示已复制）
+    public bool CopyOnCommit { get; init; } = true;    // 选定样式时复制；与直接输入可同时开启
+    public bool InsertOnCommit { get; init; }          // 选定样式时输入到唤出前聚焦的文本框
     public string PopupPosition { get; init; } = "cursor"; // cursor | primary
     public bool ReduceMotion { get; init; }               // 减少动效：关闭全部界面动画（即时生效）
     public string Backdrop { get; init; } = "mica"; // mica（Win11 系统材质，不支持时自动回退）| solid（纯色）
@@ -47,6 +49,8 @@ internal sealed record DesktopSettings
         "large" => 18.5d,
         _ => 16d,
     };
+
+    internal static string? FilePathOverrideForTests { get; set; }
 
     public static DesktopSettings Load()
     {
@@ -89,8 +93,10 @@ internal sealed record DesktopSettings
                 s = ReadBool(root, s, "prefillSelection");
                 s = ReadBool(root, s, "prefillSelectionPlus");
                 s = ReadBool(root, s, "hideAfterCopy");
+                s = ReadBool(root, s, "copyOnCommit");
+                s = ReadBool(root, s, "insertOnCommit");
                 s = ReadBool(root, s, "reduceMotion");
-                return s;
+                return s.CopyOnCommit || s.InsertOnCommit ? s : s with { CopyOnCommit = true };
             }
         }
         catch (Exception)
@@ -179,7 +185,7 @@ internal sealed record DesktopSettings
         return new HotkeyBinding(modifiers, key, text.Trim());
     }
 
-    private static string FilePath() => System.IO.Path.Combine(
+    private static string FilePath() => FilePathOverrideForTests ?? System.IO.Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FancyText", "desktop.json");
 
     private static DesktopSettings ReadString(JsonElement root, DesktopSettings s, string name, Func<string, bool> validate)
@@ -214,6 +220,8 @@ internal sealed record DesktopSettings
                 "prefillSelection" => s with { PrefillSelection = value },
                 "prefillSelectionPlus" => s with { PrefillSelectionPlus = value },
                 "hideAfterCopy" => s with { HideAfterCopy = value },
+                "copyOnCommit" => s with { CopyOnCommit = value },
+                "insertOnCommit" => s with { InsertOnCommit = value },
                 "reduceMotion" => s with { ReduceMotion = value },
                 _ => s,
             };
